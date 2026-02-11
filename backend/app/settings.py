@@ -1,8 +1,14 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 from typing import List
 
+BASE_DIR = Path(__file__).resolve().parent.parent  # backend/app -> backend
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(BASE_DIR / ".env"),
+        extra="ignore",
+    )
 
     DATABASE_URL: str
     CORS_ORIGINS: str = "http://localhost:3000"
