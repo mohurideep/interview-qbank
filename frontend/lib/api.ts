@@ -32,35 +32,10 @@ export type Me = {
   email: string;
 };
 
-export type LoginResp = {
-  access_token: string;
-  token_type: string; // "bearer"
-  email?: string;     // optional if your backend returns it
-};
-
 // --------------------
-// Token helpers
-// --------------------
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
-}
-
-function setToken(token: string) {
-  localStorage.setItem("token", token);
-}
-
-function clearToken() {
-  localStorage.removeItem("token");
-  localStorage.removeItem("email");
-}
-
-// --------------------
-// Shared fetch helper (Bearer auth)
+// Shared fetch helper (cookie auth)
 // --------------------
 async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
-
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
   };
@@ -70,18 +45,14 @@ async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<
     headers["Content-Type"] = "application/json";
   }
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
+    credentials: "include", // ✅ REQUIRED for HttpOnly cookie auth
     cache: "no-store",
   });
 
   if (!res.ok) {
-    // Try to extract useful error message
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
       const j = await res.json().catch(() => null);
@@ -99,11 +70,9 @@ async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<
 }
 
 // --------------------
-// Auth APIs (token based)
+// Auth APIs (cookie based)
 // --------------------
 export async function register(email: string, password: string) {
-  // backend: POST /v1/auth/register
-  // expected response can be Me or something similar
   return apiFetch<Me>("/v1/auth/register", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -111,38 +80,30 @@ export async function register(email: string, password: string) {
 }
 
 export async function login(email: string, password: string) {
-  // backend: POST /v1/auth/login -> returns { access_token, token_type }
-  const data = await apiFetch<LoginResp>("/v1/auth/login", {
+  // Backend sets HttpOnly cookies. Response is typically {id, email}.
+  return apiFetch<Me>("/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
-
-  if (!data?.access_token) {
-    throw new Error("Login response missing access_token");
-  }
-
-  setToken(data.access_token);
-  localStorage.setItem("email", data.email ?? email);
-
-  return data;
 }
 
 export async function logout() {
-  // If your backend has logout endpoint, call it (optional)
-  // But always clear local token.
-  try {
-    await apiFetch<{ status: string }>("/v1/auth/logout", { method: "POST" });
-  } catch {
-    // ignore (backend logout may not exist / may require cookie)
-  } finally {
-    clearToken();
-  }
-  return { status: "ok" as const };
+  return apiFetch<{ status: string }>("/v1/auth/logout", {
+    method: "POST",
+  });
 }
 
 export async function me() {
-  // backend: GET /v1/auth/me (must accept Authorization: Bearer)
-  return apiFetch<Me>("/v1/auth/me", { method: "GET" });
+  return apiFetch<Me>("/v1/auth/me", {
+    method: "GET",
+  });
+}
+
+export async function refresh() {
+  // if you have refresh endpoint; keep if exists
+  return apiFetch<{ status: string }>("/v1/auth/refresh_v2", {
+    method: "POST",
+  });
 }
 
 // --------------------
