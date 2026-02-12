@@ -16,11 +16,15 @@ export default function RegisterPage() {
     e.preventDefault();
     setErr(null);
     setLoading(true);
+
     try {
       await register(email, password);
-      // auto-login after register
+
+      // Cookie-based auth: login will set HttpOnly cookies
       await login(email, password);
+
       r.push("/");
+      r.refresh();
     } catch (e: any) {
       setErr(e?.message || "Register failed");
     } finally {
@@ -45,6 +49,7 @@ export default function RegisterPage() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
           />
           <input
             className="w-full border rounded-lg px-3 py-2"
@@ -52,6 +57,7 @@ export default function RegisterPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
           />
 
           <button

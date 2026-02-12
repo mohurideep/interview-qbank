@@ -6,11 +6,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function LoginPage() {
-  const router = useRouter();
-
+  const r = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -20,14 +18,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const data = await login(email, password);
+      // Cookie-based auth: backend sets HttpOnly cookies.
+      // Response is typically { id, email }.
+      await login(email, password);
 
-      // Expecting: { access_token, token_type, email? }
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("email", data.email ?? email);
-
-      // go to home (or /dashboard if you prefer)
-      router.replace("/");
+      // Redirect after successful login
+      r.push("/");
+      r.refresh();
     } catch (e: any) {
       setErr(e?.message || "Login failed");
     } finally {
@@ -54,7 +51,6 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
           />
-
           <input
             className="w-full border rounded-lg px-3 py-2"
             placeholder="Password"
@@ -66,7 +62,7 @@ export default function LoginPage() {
 
           <button
             className="w-full py-2 rounded-lg bg-black text-white disabled:opacity-50"
-            disabled={loading || email.trim().length < 3 || password.length < 1}
+            disabled={loading}
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>
