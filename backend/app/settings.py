@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     CORS_ORIGINS: str = "http://localhost:3000"
     DEFAULT_USER_ID: str = "00000000-0000-0000-0000-000000000001"
+    JWT_SECRET: str  # from env
+    JWT_ALG: str = "HS256"
+    ACCESS_TOKEN_MINUTES: int = 15
+    REFRESH_TOKEN_DAYS: int = 30
+    COOKIE_SECURE: bool = False  # True in prod (https)
 
     def cors_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
