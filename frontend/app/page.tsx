@@ -113,6 +113,9 @@ export default function Home() {
             <a href="/study" className="px-3 py-2 rounded-lg border bg-white text-sm">
               Study
             </a>
+            <a href="/dashboard" className="px-3 py-2 rounded-lg border bg-white text-sm">
+              Dashboard
+            </a>
 
             <button
               onClick={() => setShowAdd(true)}

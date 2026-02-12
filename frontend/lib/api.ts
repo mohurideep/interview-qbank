@@ -121,3 +121,21 @@ export async function reviewQuestion(id: string, rating: "forgot" | "almost" | "
     { method: "POST" }
   );
 }
+
+export type WeakTag = {
+  name: string;
+  avg_mastery: number;
+  question_count: number;
+};
+
+export type DashboardStats = {
+  total_questions: number;
+  due_now: number;
+  avg_mastery: number;
+  total_reviews: number;
+  weakest_tags: WeakTag[];
+};
+
+export async function getDashboardStats() {
+  return apiFetch<DashboardStats>("/v1/dashboard/stats", { method: "GET" });
+}
