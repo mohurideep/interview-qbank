@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listQuestions, reviewQuestion, type Question } from "@/lib/api";
 
+type Mode = "due" | "all";
+
 export default function StudyPage() {
+  const [mode, setMode] = useState<Mode>("due");
   const [questions, setQuestions] = useState<Question[]>([]);
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -12,24 +15,27 @@ export default function StudyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadDue = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await listQuestions({ due_only: true });
+      const data =
+        mode === "due"
+          ? await listQuestions({ due_only: true })
+          : await listQuestions();
       setQuestions(data);
       setIndex(0);
       setShowAnswer(false);
     } catch (e: any) {
-      setError(e?.message || "Failed to load due questions");
+      setError(e?.message || "Failed to load questions");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
-    loadDue();
-  }, [loadDue]);
+    load();
+  }, [load]);
 
   const next = useCallback(() => {
     setShowAnswer(false);
@@ -47,26 +53,6 @@ export default function StudyPage() {
     });
   }, [questions.length]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (submitting) return;
-      if (e.key === "ArrowRight") next();
-      if (e.key === "ArrowLeft") prev();
-      if (e.key === " ") {
-        e.preventDefault();
-        setShowAnswer(true);
-      }
-      if (showAnswer) {
-        if (e.key === "1") void onRate("forgot");
-        if (e.key === "2") void onRate("almost");
-        if (e.key === "3") void onRate("knew");
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [next, prev, showAnswer, submitting]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const current = questions[index];
 
   const progressText = useMemo(() => {
@@ -82,20 +68,21 @@ export default function StudyPage() {
     try {
       await reviewQuestion(current.id, rating);
 
-      // Remove current from the due-queue (since it now has a future next_review_at)
-      setQuestions((prev) => {
-        const filtered = prev.filter((q) => q.id !== current.id);
-        return filtered;
-      });
+      if (mode === "due") {
+        // In due mode, remove it from queue immediately (since it’s now scheduled in future)
+        setQuestions((prevQ) => prevQ.filter((q) => q.id !== current.id));
 
-      // Fix index after removal
-      setIndex((prevIdx) => {
-        const newLen = questions.length - 1;
-        if (newLen <= 0) return 0;
-        return Math.min(prevIdx, newLen - 1);
-      });
-
-      setShowAnswer(false);
+        // Adjust index safely after removal
+        setIndex((prevIdx) => {
+          const newLen = questions.length - 1;
+          if (newLen <= 0) return 0;
+          return Math.min(prevIdx, newLen - 1);
+        });
+        setShowAnswer(false);
+      } else {
+        // In all mode, just move on
+        next();
+      }
     } catch (e: any) {
       setError(e?.message || "Review failed");
     } finally {
@@ -103,21 +90,57 @@ export default function StudyPage() {
     }
   }
 
-  if (loading) return <div className="p-10">Loading due questions...</div>;
+  // keyboard shortcuts
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (submitting) return;
+
+      if (e.key === "ArrowRight") next();
+      if (e.key === "ArrowLeft") prev();
+
+      if (e.key === " ") {
+        e.preventDefault();
+        setShowAnswer(true);
+      }
+
+      if (showAnswer) {
+        if (e.key === "1") void onRate("forgot");
+        if (e.key === "2") void onRate("almost");
+        if (e.key === "3") void onRate("knew");
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [next, prev, showAnswer, submitting]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <div className="p-10">Loading questions...</div>;
 
   if (questions.length === 0) {
     return (
       <div className="p-10">
-        <div className="text-lg font-semibold">🎉 You’re done for now</div>
+        <div className="text-lg font-semibold">
+          {mode === "due" ? "🎉 You’re done for now" : "No questions found"}
+        </div>
         <div className="text-gray-600 mt-2">
-          No questions are due. Come back later or add more questions.
+          {mode === "due"
+            ? "No questions are due. Switch to All mode to practice everything."
+            : "Add some questions and come back."}
         </div>
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex gap-3 items-center">
           <Link href="/" className="px-3 py-2 rounded-lg border bg-white">
             ← Back
           </Link>
-          <button onClick={loadDue} className="px-3 py-2 rounded-lg bg-black text-white">
+
+          <button
+            onClick={() => setMode((m) => (m === "due" ? "all" : "due"))}
+            className="px-3 py-2 rounded-lg border bg-white"
+          >
+            Mode: {mode === "due" ? "Due" : "All"}
+          </button>
+
+          <button onClick={load} className="px-3 py-2 rounded-lg bg-black text-white">
             Refresh
           </button>
         </div>
@@ -134,18 +157,46 @@ export default function StudyPage() {
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
       <div className="max-w-2xl w-full bg-white border rounded-xl p-6 shadow-sm">
+        {/* Header */}
         <div className="flex justify-between items-center mb-4">
           <Link href="/" className="text-sm text-gray-600">
             ← Back
           </Link>
 
           <div className="flex items-center gap-2">
-            <button onClick={prev} className="text-sm px-3 py-1 rounded border bg-white">
+            <button
+              onClick={() => setMode((m) => (m === "due" ? "all" : "due"))}
+              className="text-sm px-3 py-1 rounded border bg-white"
+              disabled={submitting}
+              title="Toggle Due vs All"
+            >
+              Mode: {mode === "due" ? "Due" : "All"}
+            </button>
+
+            <button
+              onClick={load}
+              className="text-sm px-3 py-1 rounded border bg-white"
+              disabled={submitting}
+            >
+              Refresh
+            </button>
+
+            <button
+              onClick={prev}
+              className="text-sm px-3 py-1 rounded border bg-white"
+              disabled={submitting}
+            >
               ← Prev
             </button>
-            <button onClick={next} className="text-sm px-3 py-1 rounded border bg-white">
+
+            <button
+              onClick={next}
+              className="text-sm px-3 py-1 rounded border bg-white"
+              disabled={submitting}
+            >
               Next →
             </button>
+
             <span className="text-sm text-gray-500 ml-2">{progressText}</span>
           </div>
         </div>
@@ -168,7 +219,11 @@ export default function StudyPage() {
               Show Answer (Space)
             </button>
 
-            <button onClick={next} className="py-3 border rounded-lg bg-white" disabled={submitting}>
+            <button
+              onClick={next}
+              className="py-3 border rounded-lg bg-white"
+              disabled={submitting}
+            >
               Next →
             </button>
           </div>
@@ -205,7 +260,8 @@ export default function StudyPage() {
             </div>
 
             <p className="mt-4 text-xs text-gray-500">
-              Shortcuts: Space=show • ←/→ prev/next • 1/2/3 = rate
+              Mode: {mode === "due" ? "Due (spaced repetition)" : "All (practice)"} •
+              Space=show • ←/→ prev/next • 1/2/3 = rate
             </p>
           </>
         )}
