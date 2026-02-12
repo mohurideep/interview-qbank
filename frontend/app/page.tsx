@@ -2,9 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Question, QuestionCreate } from "@/lib/api";
-import { createQuestion, listQuestions } from "@/lib/api";
+import { createQuestion, listQuestions, logout } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -23,6 +28,13 @@ export default function Home() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ Redirect to /login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [authLoading, user, router]);
+
   async function refresh(q?: string) {
     setLoading(true);
     setError(null);
@@ -36,9 +48,12 @@ export default function Home() {
     }
   }
 
+  // ✅ Only load questions after auth is known and user is present
   useEffect(() => {
-    refresh();
-  }, []);
+    if (!authLoading && user) {
+      refresh();
+    }
+  }, [authLoading, user]);
 
   const countText = useMemo(() => `${questions.length} questions`, [questions.length]);
 
@@ -70,43 +85,55 @@ export default function Home() {
     }
   }
 
+  // ✅ Show loading while checking auth
+  if (authLoading) {
+    return (
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-4xl mx-auto p-6">
+          <div className="text-gray-600 bg-white border rounded-lg p-6">Loading…</div>
+        </div>
+      </main>
+    );
+  }
+
+  // ✅ If not logged in, render nothing (redirect will happen)
+  if (!user) return null;
+
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-6">
-        {/* <header className="flex items-center justify-between gap-4 mb-6">
+        <header className="flex items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold">Interview QBank</h1>
             <p className="text-sm text-gray-600">{countText}</p>
+            <p className="text-xs text-gray-500 mt-1">Signed in as {user.email}</p>
           </div>
 
-          <button
-            onClick={() => setShowAdd(true)}
-            className="px-3 py-2 rounded-lg bg-black text-white text-sm"
-          >
-            + Add
-          </button>
-        </header> */}
-        <header className="flex items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Interview QBank</h1>
-          <p className="text-sm text-gray-600">{countText}</p>
-        </div>
+          <div className="flex gap-2">
+            <a href="/study" className="px-3 py-2 rounded-lg border bg-white text-sm">
+              Study
+            </a>
 
-        <div className="flex gap-2">
-          <a
-            href="/study"
-            className="px-3 py-2 rounded-lg border bg-white text-sm"
-          >
-            Study
-          </a>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="px-3 py-2 rounded-lg bg-black text-white text-sm"
+            >
+              + Add
+            </button>
 
-          <button
-            onClick={() => setShowAdd(true)}
-            className="px-3 py-2 rounded-lg bg-black text-white text-sm"
-          >
-            + Add
-          </button>
-        </div>
+            <button
+              onClick={async () => {
+                try {
+                  await logout();
+                } finally {
+                  router.push("/login");
+                }
+              }}
+              className="px-3 py-2 rounded-lg border bg-white text-sm"
+            >
+              Logout
+            </button>
+          </div>
         </header>
 
         {/* Search */}
@@ -143,9 +170,7 @@ export default function Home() {
         {/* List */}
         <div className="space-y-3">
           {loading && (
-            <div className="text-gray-600 bg-white border rounded-lg p-6">
-              Loading…
-            </div>
+            <div className="text-gray-600 bg-white border rounded-lg p-6">Loading…</div>
           )}
 
           {!loading && questions.length === 0 && (
@@ -215,7 +240,9 @@ export default function Home() {
                   <label className="text-sm text-gray-700">Question</label>
                   <textarea
                     value={form.question_text}
-                    onChange={(e) => setForm((p) => ({ ...p, question_text: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, question_text: e.target.value }))
+                    }
                     className="mt-1 w-full border rounded-lg px-3 py-2"
                     rows={3}
                   />
