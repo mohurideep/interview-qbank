@@ -28,3 +28,6 @@ class QuestionOut(BaseModel):
     tags: List[str]
     created_at: datetime
     updated_at: datetime
+    review_count: int
+    mastery_score: float
+    next_review_at: datetime
