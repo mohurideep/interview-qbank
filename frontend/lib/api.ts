@@ -32,21 +32,62 @@ export type Me = {
   email: string;
 };
 
+export type LoginResp = {
+  access_token: string;
+  token_type: string; // "bearer"
+  email?: string;     // optional if your backend returns it
+};
+
 // --------------------
-// Shared fetch helper (cookie auth)
+// Token helpers
+// --------------------
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
+function setToken(token: string) {
+  localStorage.setItem("token", token);
+}
+
+function clearToken() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("email");
+}
+
+// --------------------
+// Shared fetch helper (Bearer auth)
 // --------------------
 async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getToken();
+
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+  };
+
+  // Only set JSON content-type when body exists
+  if (init.body !== undefined && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
-    credentials: "include", // ✅ IMPORTANT: send/receive HttpOnly cookies
+    headers,
     cache: "no-store",
   });
 
   if (!res.ok) {
+    // Try to extract useful error message
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      const j = await res.json().catch(() => null);
+      const msg = j?.detail || j?.message || JSON.stringify(j);
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
     const text = await res.text().catch(() => "");
     throw new Error(text || `HTTP ${res.status}`);
   }
@@ -58,9 +99,11 @@ async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<
 }
 
 // --------------------
-// Auth APIs
+// Auth APIs (token based)
 // --------------------
 export async function register(email: string, password: string) {
+  // backend: POST /v1/auth/register
+  // expected response can be Me or something similar
   return apiFetch<Me>("/v1/auth/register", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -68,29 +111,38 @@ export async function register(email: string, password: string) {
 }
 
 export async function login(email: string, password: string) {
-  return apiFetch<Me>("/v1/auth/login", {
+  // backend: POST /v1/auth/login -> returns { access_token, token_type }
+  const data = await apiFetch<LoginResp>("/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
+
+  if (!data?.access_token) {
+    throw new Error("Login response missing access_token");
+  }
+
+  setToken(data.access_token);
+  localStorage.setItem("email", data.email ?? email);
+
+  return data;
 }
 
 export async function logout() {
-  return apiFetch<{ status: string }>("/v1/auth/logout", {
-    method: "POST",
-  });
+  // If your backend has logout endpoint, call it (optional)
+  // But always clear local token.
+  try {
+    await apiFetch<{ status: string }>("/v1/auth/logout", { method: "POST" });
+  } catch {
+    // ignore (backend logout may not exist / may require cookie)
+  } finally {
+    clearToken();
+  }
+  return { status: "ok" as const };
 }
 
 export async function me() {
-  return apiFetch<Me>("/v1/auth/me", {
-    method: "GET",
-  });
-}
-
-export async function refresh() {
-  // Your backend endpoint is /v1/auth/refresh_v2 (cookie-based)
-  return apiFetch<{ status: string }>("/v1/auth/refresh_v2", {
-    method: "POST",
-  });
+  // backend: GET /v1/auth/me (must accept Authorization: Bearer)
+  return apiFetch<Me>("/v1/auth/me", { method: "GET" });
 }
 
 // --------------------
@@ -122,6 +174,9 @@ export async function reviewQuestion(id: string, rating: "forgot" | "almost" | "
   );
 }
 
+// --------------------
+// Dashboard APIs
+// --------------------
 export type WeakTag = {
   name: string;
   avg_mastery: number;
