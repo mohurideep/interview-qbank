@@ -73,7 +73,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-6">
-        <header className="flex items-center justify-between gap-4 mb-6">
+        {/* <header className="flex items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold">Interview QBank</h1>
             <p className="text-sm text-gray-600">{countText}</p>
@@ -85,6 +85,28 @@ export default function Home() {
           >
             + Add
           </button>
+        </header> */}
+        <header className="flex items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Interview QBank</h1>
+          <p className="text-sm text-gray-600">{countText}</p>
+        </div>
+
+        <div className="flex gap-2">
+          <a
+            href="/study"
+            className="px-3 py-2 rounded-lg border bg-white text-sm"
+          >
+            Study
+          </a>
+
+          <button
+            onClick={() => setShowAdd(true)}
+            className="px-3 py-2 rounded-lg bg-black text-white text-sm"
+          >
+            + Add
+          </button>
+        </div>
         </header>
 
         {/* Search */}
