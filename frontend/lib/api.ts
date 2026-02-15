@@ -16,7 +16,7 @@ export type Question = {
 
   review_count: number;
   mastery_score: number;
-  next_review_at: string | null;
+  next_review_at: string;
 };
 
 export type QuestionCreate = {
@@ -27,13 +27,18 @@ export type QuestionCreate = {
   tags: string[];
 };
 
+// ✅ PATCH supports partial fields
+export type QuestionUpdate = Partial<QuestionCreate> & {
+  is_flagged?: boolean;
+};
+
 export type Me = {
   id: string;
   email: string;
 };
 
 // --------------------
-// Shared fetch helper (COOKIE AUTH)
+// Shared fetch helper (cookie auth)
 // --------------------
 async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
@@ -48,7 +53,7 @@ async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
-    credentials: "include", // ✅ REQUIRED: send/receive HttpOnly cookies across domains
+    credentials: "include", // ✅ REQUIRED for HttpOnly cookie auth
     cache: "no-store",
   });
 
@@ -56,7 +61,7 @@ async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
       const j = await res.json().catch(() => null);
-      const msg = j?.detail || j?.message || (j ? JSON.stringify(j) : "");
+      const msg = j?.detail || j?.message || JSON.stringify(j);
       throw new Error(msg || `HTTP ${res.status}`);
     }
     const text = await res.text().catch(() => "");
@@ -80,7 +85,6 @@ export async function register(email: string, password: string) {
 }
 
 export async function login(email: string, password: string) {
-  // Backend sets HttpOnly cookies. Response is {id, email}
   return apiFetch<Me>("/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -123,6 +127,21 @@ export async function createQuestion(payload: QuestionCreate) {
   return apiFetch<Question>("/v1/questions", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+// ✅ NEW: Update
+export async function updateQuestion(id: string, payload: QuestionUpdate) {
+  return apiFetch<Question>(`/v1/questions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ✅ NEW: Delete
+export async function deleteQuestion(id: string) {
+  return apiFetch<{ status: string }>(`/v1/questions/${id}`, {
+    method: "DELETE",
   });
 }
 
