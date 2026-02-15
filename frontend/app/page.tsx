@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Question, QuestionCreate } from "@/lib/api";
-import { createQuestion, listQuestions } from "@/lib/api";
+import type { Question, QuestionCreate, QuestionUpdate } from "@/lib/api";
+import { createQuestion, listQuestions, updateQuestion, deleteQuestion } from "@/lib/api";
+
+type Mode = "add" | "edit";
 
 export default function Home() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -10,7 +12,10 @@ export default function Home() {
 
   const [search, setSearch] = useState("");
 
-  const [showAdd, setShowAdd] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [mode, setMode] = useState<Mode>("add");
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const [form, setForm] = useState<QuestionCreate>({
     question_text: "",
     answer_md: "",
@@ -18,6 +23,7 @@ export default function Home() {
     source: "",
     tags: [],
   });
+
   const [tagsText, setTagsText] = useState(""); // comma separated
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -36,34 +42,78 @@ export default function Home() {
     }
   }
 
+  // ✅ IMPORTANT: load questions on first render
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const countText = useMemo(() => `${questions.length} questions`, [questions.length]);
 
+  function openAdd() {
+    setMode("add");
+    setEditingId(null);
+    setForm({ question_text: "", answer_md: "", difficulty: 3, source: "", tags: [] });
+    setTagsText("");
+    setShowModal(true);
+  }
+
+  function openEdit(q: Question) {
+    setMode("edit");
+    setEditingId(q.id);
+    setForm({
+      question_text: q.question_text || "",
+      answer_md: q.answer_md || "",
+      difficulty: q.difficulty || 3,
+      source: q.source || "",
+      tags: q.tags || [],
+    });
+    setTagsText((q.tags || []).join(", "));
+    setShowModal(true);
+  }
+
   async function onSubmit() {
     setSubmitting(true);
     setError(null);
+
     try {
       const tags = tagsText
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const payload: QuestionCreate = { ...form, tags };
+      if (mode === "add") {
+        const payload: QuestionCreate = { ...form, tags };
+        await createQuestion(payload);
+      } else {
+        if (!editingId) throw new Error("Missing question id for edit");
+        const payload: QuestionUpdate = { ...form, tags };
+        await updateQuestion(editingId, payload);
+      }
 
-      await createQuestion(payload);
-
-      // reset + refresh
-      setForm({ question_text: "", answer_md: "", difficulty: 3, source: "", tags: [] });
-      setTagsText("");
-      setShowAdd(false);
+      setShowModal(false);
       await refresh(search);
     } catch (e: any) {
-      setError(e?.message || "Failed to create question");
+      setError(
+        e?.message ||
+          (mode === "add" ? "Failed to create question" : "Failed to update question")
+      );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function onDelete(id: string) {
+    const ok = window.confirm("Delete this question? This cannot be undone.");
+    if (!ok) return;
+
+    setError(null);
+    try {
+      await deleteQuestion(id);
+      setExpandedId((cur) => (cur === id ? null : cur));
+      await refresh(search);
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete question");
     }
   }
 
@@ -85,7 +135,7 @@ export default function Home() {
             </a>
 
             <button
-              onClick={() => setShowAdd(true)}
+              onClick={openAdd}
               className="px-3 py-2 rounded-lg bg-black text-white text-sm"
             >
               + Add
@@ -155,12 +205,26 @@ export default function Home() {
 
                 {q.source && <p className="mt-2 text-xs text-gray-500">Source: {q.source}</p>}
 
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     onClick={() => setExpandedId(expanded ? null : q.id)}
                     className="text-sm px-3 py-2 rounded-lg border bg-white"
                   >
                     {expanded ? "Hide answer" : "Show answer"}
+                  </button>
+
+                  <button
+                    onClick={() => openEdit(q)}
+                    className="text-sm px-3 py-2 rounded-lg border bg-white"
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    onClick={() => onDelete(q.id)}
+                    className="text-sm px-3 py-2 rounded-lg border bg-white text-red-600"
+                  >
+                    Delete
                   </button>
                 </div>
 
@@ -174,14 +238,16 @@ export default function Home() {
           })}
         </div>
 
-        {/* Add Modal */}
-        {showAdd && (
+        {/* Add/Edit Modal */}
+        {showModal && (
           <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
             <div className="w-full max-w-2xl bg-white rounded-xl border shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-lg">Add Question</h3>
+                <h3 className="font-semibold text-lg">
+                  {mode === "add" ? "Add Question" : "Edit Question"}
+                </h3>
                 <button
-                  onClick={() => setShowAdd(false)}
+                  onClick={() => setShowModal(false)}
                   className="text-sm px-3 py-2 rounded-lg border bg-white"
                 >
                   Close
@@ -193,9 +259,7 @@ export default function Home() {
                   <label className="text-sm text-gray-700">Question</label>
                   <textarea
                     value={form.question_text}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, question_text: e.target.value }))
-                    }
+                    onChange={(e) => setForm((p) => ({ ...p, question_text: e.target.value }))}
                     className="mt-1 w-full border rounded-lg px-3 py-2"
                     rows={3}
                   />
@@ -249,7 +313,7 @@ export default function Home() {
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button
-                    onClick={() => setShowAdd(false)}
+                    onClick={() => setShowModal(false)}
                     className="text-sm px-3 py-2 rounded-lg border bg-white"
                   >
                     Cancel
@@ -259,7 +323,13 @@ export default function Home() {
                     disabled={submitting || form.question_text.trim().length < 3}
                     className="text-sm px-3 py-2 rounded-lg bg-black text-white disabled:opacity-50"
                   >
-                    {submitting ? "Saving..." : "Save"}
+                    {submitting
+                      ? mode === "add"
+                        ? "Saving..."
+                        : "Updating..."
+                      : mode === "add"
+                      ? "Save"
+                      : "Update"}
                   </button>
                 </div>
               </div>
