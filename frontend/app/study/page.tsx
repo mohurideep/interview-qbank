@@ -19,10 +19,7 @@ export default function StudyPage() {
     setLoading(true);
     setError(null);
     try {
-      const data =
-        mode === "due"
-          ? await listQuestions({ due_only: true })
-          : await listQuestions();
+      const data = mode === "due" ? await listQuestions({ due_only: true }) : await listQuestions();
       setQuestions(data);
       setIndex(0);
       setShowAnswer(false);
@@ -69,18 +66,21 @@ export default function StudyPage() {
       await reviewQuestion(current.id, rating);
 
       if (mode === "due") {
-        // In due mode, remove it from queue immediately (since it’s now scheduled in future)
-        setQuestions((prevQ) => prevQ.filter((q) => q.id !== current.id));
+        // Remove current from queue immediately (since next_review_at moved to the future)
+        setQuestions((prevQ) => {
+          const nextQ = prevQ.filter((q) => q.id !== current.id);
 
-        // Adjust index safely after removal
-        setIndex((prevIdx) => {
-          const newLen = questions.length - 1;
-          if (newLen <= 0) return 0;
-          return Math.min(prevIdx, newLen - 1);
+          // keep index valid against the *new* list
+          setIndex((prevIdx) => {
+            if (nextQ.length === 0) return 0;
+            return Math.min(prevIdx, nextQ.length - 1);
+          });
+
+          return nextQ;
         });
+
         setShowAnswer(false);
       } else {
-        // In all mode, just move on
         next();
       }
     } catch (e: any) {
@@ -260,8 +260,8 @@ export default function StudyPage() {
             </div>
 
             <p className="mt-4 text-xs text-gray-500">
-              Mode: {mode === "due" ? "Due (spaced repetition)" : "All (practice)"} •
-              Space=show • ←/→ prev/next • 1/2/3 = rate
+              Mode: {mode === "due" ? "Due (spaced repetition)" : "All (practice)"} • Space=show •
+              ←/→ prev/next • 1/2/3 = rate
             </p>
           </>
         )}

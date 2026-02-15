@@ -2,14 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Question, QuestionCreate } from "@/lib/api";
-import { createQuestion, listQuestions, logout } from "@/lib/api";
-import { useAuth } from "@/lib/useAuth";
-import { useRouter } from "next/navigation";
+import { createQuestion, listQuestions } from "@/lib/api";
 
 export default function Home() {
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -28,13 +23,6 @@ export default function Home() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ Redirect to /login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-    }
-  }, [authLoading, user, router]);
-
   async function refresh(q?: string) {
     setLoading(true);
     setError(null);
@@ -48,12 +36,9 @@ export default function Home() {
     }
   }
 
-  // ✅ Only load questions after auth is known and user is present
   useEffect(() => {
-    if (!authLoading && user) {
-      refresh();
-    }
-  }, [authLoading, user]);
+    refresh();
+  }, []);
 
   const countText = useMemo(() => `${questions.length} questions`, [questions.length]);
 
@@ -66,10 +51,7 @@ export default function Home() {
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const payload: QuestionCreate = {
-        ...form,
-        tags,
-      };
+      const payload: QuestionCreate = { ...form, tags };
 
       await createQuestion(payload);
 
@@ -85,20 +67,6 @@ export default function Home() {
     }
   }
 
-  // ✅ Show loading while checking auth
-  if (authLoading) {
-    return (
-      <main className="min-h-screen bg-gray-50">
-        <div className="max-w-4xl mx-auto p-6">
-          <div className="text-gray-600 bg-white border rounded-lg p-6">Loading…</div>
-        </div>
-      </main>
-    );
-  }
-
-  // ✅ If not logged in, render nothing (redirect will happen)
-  if (!user) return null;
-
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-6">
@@ -106,7 +74,6 @@ export default function Home() {
           <div>
             <h1 className="text-2xl font-bold">Interview QBank</h1>
             <p className="text-sm text-gray-600">{countText}</p>
-            <p className="text-xs text-gray-500 mt-1">Signed in as {user.email}</p>
           </div>
 
           <div className="flex gap-2">
@@ -122,19 +89,6 @@ export default function Home() {
               className="px-3 py-2 rounded-lg bg-black text-white text-sm"
             >
               + Add
-            </button>
-
-            <button
-              onClick={async () => {
-                try {
-                  await logout();
-                } finally {
-                  router.push("/login");
-                }
-              }}
-              className="px-3 py-2 rounded-lg border bg-white text-sm"
-            >
-              Logout
             </button>
           </div>
         </header>
@@ -188,9 +142,7 @@ export default function Home() {
               <div key={q.id} className="bg-white rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-4">
                   <h2 className="font-semibold">{q.question_text}</h2>
-                  <span className="text-xs px-2 py-1 rounded bg-gray-100">
-                    L{q.difficulty}
-                  </span>
+                  <span className="text-xs px-2 py-1 rounded bg-gray-100">L{q.difficulty}</span>
                 </div>
 
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -201,9 +153,7 @@ export default function Home() {
                   ))}
                 </div>
 
-                {q.source && (
-                  <p className="mt-2 text-xs text-gray-500">Source: {q.source}</p>
-                )}
+                {q.source && <p className="mt-2 text-xs text-gray-500">Source: {q.source}</p>}
 
                 <div className="mt-3 flex gap-2">
                   <button

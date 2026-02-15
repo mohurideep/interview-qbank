@@ -1,26 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
 import { getDashboardStats, type DashboardStats } from "@/lib/api";
 import Link from "next/link";
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !user) router.push("/login");
-  }, [authLoading, user, router]);
-
-  useEffect(() => {
     async function load() {
-      if (authLoading || !user) return;
       setLoading(true);
       setErr(null);
       try {
@@ -33,12 +23,7 @@ export default function DashboardPage() {
       }
     }
     load();
-  }, [authLoading, user]);
-
-  if (authLoading) {
-    return <div className="p-10">Loading…</div>;
-  }
-  if (!user) return null;
+  }, []);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -46,7 +31,7 @@ export default function DashboardPage() {
         <header className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold">Dashboard</h1>
-            <p className="text-sm text-gray-600">Signed in as {user.email}</p>
+            <p className="text-sm text-gray-600">Your learning stats</p>
           </div>
 
           <div className="flex gap-2">
