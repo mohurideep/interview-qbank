@@ -1,29 +1,29 @@
 import uuid
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from .db import get_db
 from .settings import settings
-from .auth import decode_token
 from .models import User
 
 
 def get_current_user(
-    request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    token = request.cookies.get("access_token")
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    try:
-        data = decode_token(token, settings.JWT_SECRET, settings.JWT_ALG)
-        user_id = uuid.UUID(data["sub"])
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    """
+    Single-user mode (NO auth):
+    Always returns the DEFAULT_USER_ID user.
+    Auto-creates the user row if missing.
+    """
+    user_id = uuid.UUID(settings.DEFAULT_USER_ID)
 
     user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+    if user:
+        return user
 
+    # Auto-create a placeholder user
+    user = User(id=user_id, email="local@qbank", password_hash="")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user
