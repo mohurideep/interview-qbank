@@ -2,7 +2,7 @@ import uuid
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
@@ -41,14 +41,37 @@ class MeOut(BaseModel):
 # -----------------------------
 # Cookie helpers
 # -----------------------------
+def _cookie_secure() -> bool:
+    """
+    For SameSite=None, browsers REQUIRE Secure=True (HTTPS).
+    Locally you might be on http:// so you can keep secure False locally if needed.
+    """
+    return bool(getattr(settings, "COOKIE_SECURE", False))
+
+
+def _cookie_samesite() -> str:
+    """
+    If FE and BE are on different domains (Vercel + Railway), you MUST use SameSite=None.
+    Default to 'lax' for local/dev.
+    """
+    return str(getattr(settings, "COOKIE_SAMESITE", "lax")).lower()
+
+
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
-    # In prod: COOKIE_SECURE=True and SameSite="none" if frontend+backend are on different domains.
+    samesite = _cookie_samesite()
+
+    # If cross-site cookies are needed, enforce browser rules.
+    # SameSite=None requires Secure=True.
+    secure = _cookie_secure()
+    if samesite == "none":
+        secure = True
+
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=bool(getattr(settings, "COOKIE_SECURE", False)),
-        samesite="lax",
+        secure=secure,
+        samesite=samesite,  # ✅ none for Vercel<->Railway
         max_age=int(getattr(settings, "ACCESS_TOKEN_MINUTES", 15) * 60),
         path="/",
     )
@@ -56,8 +79,8 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=bool(getattr(settings, "COOKIE_SECURE", False)),
-        samesite="lax",
+        secure=secure,
+        samesite=samesite,  # ✅ none for Vercel<->Railway
         max_age=int(getattr(settings, "REFRESH_TOKEN_DAYS", 30) * 24 * 60 * 60),
         path="/v1/auth",  # restrict refresh cookie scope a bit
     )
@@ -127,14 +150,7 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
 
 @router.post("/refresh")
 def refresh(response: Response, db: Session = Depends(get_db), refresh_token: Optional[str] = None):
-    # NOTE: FastAPI won't inject cookie directly here unless you use Request.
-    # We'll read cookie via Response? not possible. So: use Request in real usage.
-    # To keep it correct, implement with Request below.
     raise HTTPException(status_code=500, detail="Use /refresh_v2. See auth.py for correct handler.")
-
-
-# ✅ Correct refresh handler (reads refresh_token cookie)
-from fastapi import Request  # placed here to keep file simple
 
 
 @router.post("/refresh_v2")
