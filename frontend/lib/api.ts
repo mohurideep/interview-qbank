@@ -16,7 +16,7 @@ export type Question = {
 
   review_count: number;
   mastery_score: number;
-  next_review_at: string;
+  next_review_at: string | null;
 };
 
 export type QuestionCreate = {
@@ -33,7 +33,7 @@ export type Me = {
 };
 
 // --------------------
-// Shared fetch helper (cookie auth)
+// Shared fetch helper (COOKIE AUTH)
 // --------------------
 async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
@@ -48,7 +48,7 @@ async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
-    credentials: "include", // ✅ REQUIRED for HttpOnly cookie auth
+    credentials: "include", // ✅ REQUIRED: send/receive HttpOnly cookies across domains
     cache: "no-store",
   });
 
@@ -56,7 +56,7 @@ async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
       const j = await res.json().catch(() => null);
-      const msg = j?.detail || j?.message || JSON.stringify(j);
+      const msg = j?.detail || j?.message || (j ? JSON.stringify(j) : "");
       throw new Error(msg || `HTTP ${res.status}`);
     }
     const text = await res.text().catch(() => "");
@@ -80,7 +80,7 @@ export async function register(email: string, password: string) {
 }
 
 export async function login(email: string, password: string) {
-  // Backend sets HttpOnly cookies. Response is typically {id, email}.
+  // Backend sets HttpOnly cookies. Response is {id, email}
   return apiFetch<Me>("/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -100,7 +100,6 @@ export async function me() {
 }
 
 export async function refresh() {
-  // if you have refresh endpoint; keep if exists
   return apiFetch<{ status: string }>("/v1/auth/refresh_v2", {
     method: "POST",
   });
