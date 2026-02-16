@@ -5,6 +5,24 @@ from sqlalchemy import select
 from . import models
 from .schemas import QuestionCreate, QuestionUpdate
 
+
+def _validate_parent_id(
+    db: Session,
+    user_id: uuid.UUID,
+    parent_id: uuid.UUID | None,
+    child_id: uuid.UUID | None = None,
+) -> None:
+    if parent_id is None:
+        return
+
+    if child_id is not None and parent_id == child_id:
+        raise ValueError("A question cannot be its own parent")
+
+    parent = get_question(db, user_id, parent_id)
+    if not parent:
+        raise ValueError("Parent question not found for this user")
+
+
 def _get_or_create_tags(db: Session, user_id: uuid.UUID, names: list[str]) -> list[models.Tag]:
     cleaned = []
     seen = set()
@@ -33,8 +51,11 @@ def _get_or_create_tags(db: Session, user_id: uuid.UUID, names: list[str]) -> li
     return result
 
 def create_question(db: Session, user_id: uuid.UUID, payload: QuestionCreate) -> models.Question:
+    _validate_parent_id(db, user_id, payload.parent_id)
+
     q = models.Question(
         user_id=user_id,
+        parent_id=payload.parent_id,
         question_text=payload.question_text,
         answer_md=payload.answer_md,
         difficulty=payload.difficulty,
@@ -60,6 +81,9 @@ def update_question(db: Session, q: models.Question, user_id: uuid.UUID, payload
         q.is_flagged = payload.is_flagged
     if payload.tags is not None:
         q.tags = _get_or_create_tags(db, user_id, payload.tags)
+    if "parent_id" in payload.model_fields_set:
+        _validate_parent_id(db, user_id, payload.parent_id, child_id=q.id)
+        q.parent_id = payload.parent_id
 
     q.updated_at = datetime.utcnow()
     db.commit()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
@@ -32,7 +34,7 @@ class Question(Base):
     # Self-referential relationship:
     # - parent: the question this is a follow-up of
     # - followups: list of child questions (backref)
-    parent: Mapped["Question" | None] = relationship(
+    parent: Mapped[Question | None] = relationship(
         "Question",
         remote_side="Question.id",
         backref="followups",

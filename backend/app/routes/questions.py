@@ -24,6 +24,7 @@ def _user_id() -> uuid.UUID:
 def _to_out(q) -> QuestionOut:
     return QuestionOut(
         id=q.id,
+        parent_id=q.parent_id,
         question_text=q.question_text,
         answer_md=q.answer_md,
         difficulty=q.difficulty,
@@ -38,9 +39,42 @@ def _to_out(q) -> QuestionOut:
     )
 
 
+def _ensure_valid_parent(
+    db: Session,
+    user_id: uuid.UUID,
+    parent_id: uuid.UUID | None,
+    child_id: uuid.UUID | None = None,
+) -> None:
+    if parent_id is None:
+        return
+
+    if child_id is not None and parent_id == child_id:
+        raise HTTPException(status_code=400, detail="A question cannot be its own parent")
+
+    parent = crud.get_question(db, user_id, parent_id)
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent question not found")
+
+    if child_id is None:
+        return
+
+    ancestor = parent
+    while ancestor.parent_id is not None:
+        if ancestor.parent_id == child_id:
+            raise HTTPException(status_code=400, detail="Parent relationship would create a cycle")
+        ancestor = crud.get_question(db, user_id, ancestor.parent_id)
+        if not ancestor:
+            break
+
+
 @router.post("", response_model=QuestionOut)
 def create(payload: QuestionCreate, db: Session = Depends(get_db)):
-    q = crud.create_question(db, _user_id(), payload)
+    user_id = _user_id()
+    _ensure_valid_parent(db, user_id, payload.parent_id)
+    try:
+        q = crud.create_question(db, user_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _to_out(q)
 
 
@@ -71,11 +105,18 @@ def get_one(qid: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.patch("/{qid}", response_model=QuestionOut)
 def patch(qid: uuid.UUID, payload: QuestionUpdate, db: Session = Depends(get_db)):
-    q = crud.get_question(db, _user_id(), qid)
+    user_id = _user_id()
+    q = crud.get_question(db, user_id, qid)
     if not q:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    q = crud.update_question(db, q, _user_id(), payload)
+    if "parent_id" in payload.model_fields_set:
+        _ensure_valid_parent(db, user_id, payload.parent_id, child_id=qid)
+
+    try:
+        q = crud.update_question(db, q, user_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _to_out(q)
 
 
