@@ -22,6 +22,23 @@ class Question(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(index=True)
 
+    # ✅ Follow-up support: a question can optionally point to a parent question
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("questions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Self-referential relationship:
+    # - parent: the question this is a follow-up of
+    # - followups: list of child questions (backref)
+    parent: Mapped["Question" | None] = relationship(
+        "Question",
+        remote_side="Question.id",
+        backref="followups",
+        lazy="selectin",
+    )
+
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     answer_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
@@ -34,6 +51,9 @@ class Question(Base):
 
     review_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     mastery_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    # NOTE: you currently default next_review_at to utcnow (so every new question becomes "due")
+    # You can keep it, or set nullable=True + default=None if you want "not scheduled" initially.
     next_review_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     tags: Mapped[list["Tag"]] = relationship(
@@ -69,6 +89,7 @@ class QuestionTag(Base):
         ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     )
+
 
 class User(Base):
     __tablename__ = "users"
