@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, and_, or_
 from . import models
 from .schemas import QuestionCreate, QuestionUpdate
 
@@ -97,8 +97,22 @@ def list_questions(db: Session, user_id: uuid.UUID, search: str | None, tag: str
         stmt = stmt.where(models.Question.is_flagged == flagged)
 
     if search:
-        s = f"%{search.strip().lower()}%"
-        stmt = stmt.where(models.Question.question_text.ilike(s) | models.Question.answer_md.ilike(s))
+        # Tokenized partial search:
+        # - supports multi-word queries where each token can match anywhere
+        # - escapes LIKE wildcards in user input so '%'/'_' are treated literally
+        terms = [t for t in search.strip().lower().split() if t]
+        if terms:
+            term_clauses = []
+            for term in terms:
+                escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                pattern = f"%{escaped}%"
+                term_clauses.append(
+                    or_(
+                        models.Question.question_text.ilike(pattern, escape="\\"),
+                        models.Question.answer_md.ilike(pattern, escape="\\"),
+                    )
+                )
+            stmt = stmt.where(and_(*term_clauses))
 
     if tag:
         t = tag.strip().lower()
