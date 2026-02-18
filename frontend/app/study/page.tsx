@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listQuestions, reviewQuestion, type Question } from "@/lib/api";
+import MarkdownAnswer from "@/components/MarkdownAnswer";
 
 type Mode = "due" | "all";
 
@@ -334,9 +335,10 @@ export default function StudyPage() {
 
         {showAnswer && (
           <>
-            <div className="mt-4 p-4 bg-gray-100 rounded-lg whitespace-pre-wrap">
-              {current.answer_md || "No answer added yet."}
-            </div>
+            <MarkdownAnswer
+              className="mt-4 p-4 bg-gray-100 rounded-lg"
+              content={current.answer_md || "No answer added yet."}
+            />
 
             <div className="mt-6 grid grid-cols-3 gap-3">
               <button

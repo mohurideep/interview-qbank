@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Question, QuestionCreate, QuestionUpdate } from "@/lib/api";
 import { createQuestion, listQuestions, updateQuestion, deleteQuestion } from "@/lib/api";
+import MarkdownAnswer from "@/components/MarkdownAnswer";
 
 type Mode = "add" | "edit";
 
@@ -316,9 +317,10 @@ export default function Home() {
         </div>
 
         {expanded && (
-          <div className="mt-3 whitespace-pre-wrap text-sm text-stone-800 bg-amber-50/70 border border-amber-200 rounded-xl p-3 animate-[fadeIn_220ms_ease-out]">
-            {q.answer_md ? highlightMatches(q.answer_md) : "No answer added yet."}
-          </div>
+          <MarkdownAnswer
+            className="mt-3 text-sm text-stone-800 bg-amber-50/70 border border-amber-200 rounded-xl p-3 animate-[fadeIn_220ms_ease-out]"
+            content={q.answer_md || "No answer added yet."}
+          />
         )}
       </div>
     );
