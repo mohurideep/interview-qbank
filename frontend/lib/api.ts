@@ -42,7 +42,7 @@ export type Me = {
 // --------------------
 // Shared fetch helper (cookie auth)
 // --------------------
-async function apiFetch<T = any>(path: string, init: RequestInit = {}): Promise<T> {
+async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
   };
@@ -114,15 +114,35 @@ export async function refresh() {
 // --------------------
 // Questions APIs
 // --------------------
-export async function listQuestions(params?: { search?: string; due_only?: boolean }) {
+export async function listQuestions(params?: {
+  search?: string;
+  source?: string;
+  tags?: string;
+  due_only?: boolean;
+}) {
   const usp = new URLSearchParams();
   if (params?.search) usp.set("search", params.search);
+  if (params?.source) usp.set("source", params.source);
+  if (params?.tags) usp.set("tags", params.tags);
   if (params?.due_only !== undefined) usp.set("due_only", String(params.due_only));
 
   const qs = usp.toString();
   const path = qs ? `/v1/questions?${qs}` : "/v1/questions";
 
   return apiFetch<Question[]>(path, { method: "GET" });
+}
+
+export async function getQuestionSuggestions(
+  field: "source" | "tag",
+  q: string,
+  limit = 8
+) {
+  const usp = new URLSearchParams({
+    field,
+    q,
+    limit: String(limit),
+  });
+  return apiFetch<string[]>(`/v1/questions/suggestions?${usp.toString()}`, { method: "GET" });
 }
 
 export async function createQuestion(payload: QuestionCreate) {

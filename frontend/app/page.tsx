@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Question, QuestionCreate, QuestionUpdate } from "@/lib/api";
-import { createQuestion, listQuestions, updateQuestion, deleteQuestion } from "@/lib/api";
+import {
+  createQuestion,
+  listQuestions,
+  updateQuestion,
+  deleteQuestion,
+  getQuestionSuggestions,
+} from "@/lib/api";
 import MarkdownAnswer from "@/components/MarkdownAnswer";
 
 type Mode = "add" | "edit";
@@ -16,6 +22,8 @@ export default function Home() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [tagsFilter, setTagsFilter] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [mode, setMode] = useState<Mode>("add");
@@ -31,6 +39,8 @@ export default function Home() {
   });
 
   const [tagsText, setTagsText] = useState("");
+  const [sourceSuggestions, setSourceSuggestions] = useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +78,24 @@ export default function Home() {
     [questions, questionById]
   );
   const displayedRoots = topLevelQuestions;
+  const sourceOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          questions
+            .map((q) => q.source?.trim())
+            .filter((s): s is string => Boolean(s))
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [questions]
+  );
+  const tagOptions = useMemo(
+    () =>
+      Array.from(new Set(questions.flatMap((q) => q.tags || []).map((t) => t.trim()).filter(Boolean))).sort(
+        (a, b) => a.localeCompare(b)
+      ),
+    [questions]
+  );
 
   const descendantCountById = useMemo(() => {
     const memo = new Map<string, number>();
@@ -98,11 +126,19 @@ export default function Home() {
     return `${visible} top-level shown (${questions.length} total)`;
   }, [displayedRoots.length, questions.length, topLevelOnly]);
 
-  async function refresh(q?: string) {
+  async function refresh(filters?: { search?: string; source?: string; tags?: string }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await listQuestions({ search: q?.trim() || undefined });
+      const data = await listQuestions({
+        search: filters?.search?.trim() || undefined,
+        source: filters?.source?.trim() || undefined,
+        tags: filters?.tags
+          ?.split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .join(",") || undefined,
+      });
       setQuestions(data);
     } catch (error: unknown) {
       setError(getErrorMessage(error, "Failed to load questions"));
@@ -142,6 +178,8 @@ export default function Home() {
       tags: [],
     });
     setTagsText("");
+    setSourceSuggestions([]);
+    setTagSuggestions([]);
     setShowModal(true);
   }
 
@@ -157,7 +195,61 @@ export default function Home() {
       tags: q.tags || [],
     });
     setTagsText((q.tags || []).join(", "));
+    setSourceSuggestions([]);
+    setTagSuggestions([]);
     setShowModal(true);
+  }
+
+  const activeTagToken = useMemo(() => {
+    const parts = tagsText.split(",");
+    return (parts[parts.length - 1] || "").trim();
+  }, [tagsText]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    const query = form.source.trim();
+    if (!query) {
+      setSourceSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void getQuestionSuggestions("source", query, 8)
+        .then((items) => setSourceSuggestions(items))
+        .catch(() => setSourceSuggestions([]));
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [showModal, form.source]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    if (!activeTagToken) {
+      setTagSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void getQuestionSuggestions("tag", activeTagToken, 8)
+        .then((items) => setTagSuggestions(items))
+        .catch(() => setTagSuggestions([]));
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [showModal, activeTagToken]);
+
+  function applyTagSuggestion(tag: string) {
+    const normalized = tag.trim();
+    if (!normalized) return;
+
+    const existing = tagsText
+      .split(",")
+      .slice(0, -1)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const merged = [...existing, normalized];
+    setTagsText(`${merged.join(", ")}, `);
+    setTagSuggestions([]);
   }
 
   async function onSubmit() {
@@ -180,7 +272,7 @@ export default function Home() {
       }
 
       setShowModal(false);
-      await refresh(search);
+      await refresh({ search, source: sourceFilter, tags: tagsFilter });
     } catch (error: unknown) {
       const fallback = mode === "add" ? "Failed to create question" : "Failed to update question";
       setError(getErrorMessage(error, fallback));
@@ -197,7 +289,7 @@ export default function Home() {
     try {
       await deleteQuestion(id);
       setExpandedId((cur) => (cur === id ? null : cur));
-      await refresh(search);
+      await refresh({ search, source: sourceFilter, tags: tagsFilter });
     } catch (error: unknown) {
       setError(getErrorMessage(error, "Failed to delete question"));
     }
@@ -395,8 +487,32 @@ export default function Home() {
               placeholder="Search questions..."
               className="flex-1 min-w-[240px] border border-amber-300 rounded-lg px-3 py-2 bg-amber-50/40 text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
             />
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="min-w-[180px] border border-amber-300 rounded-lg px-3 py-2 bg-amber-50/40 text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+            >
+              <option value="">All sources</option>
+              {sourceOptions.map((source) => (
+                <option key={source} value={source}>
+                  {source}
+                </option>
+              ))}
+            </select>
+            <select
+              value={tagsFilter}
+              onChange={(e) => setTagsFilter(e.target.value)}
+              className="min-w-[220px] border border-amber-300 rounded-lg px-3 py-2 bg-amber-50/40 text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+            >
+              <option value="">All tags</option>
+              {tagOptions.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
             <button
-              onClick={() => refresh(search)}
+              onClick={() => refresh({ search, source: sourceFilter, tags: tagsFilter })}
               className={buttonSecondary}
             >
               Search
@@ -404,7 +520,9 @@ export default function Home() {
             <button
               onClick={() => {
                 setSearch("");
-                void refresh("");
+                setSourceFilter("");
+                setTagsFilter("");
+                void refresh({ search: "", source: "", tags: "" });
               }}
               className={buttonSecondary}
             >
@@ -572,6 +690,23 @@ export default function Home() {
                       className="mt-1 w-full border border-amber-300 rounded-lg px-3 py-2 bg-amber-50/30"
                       placeholder="e.g., Google, Interview @ X, Self-study"
                     />
+                    {form.source.trim() && sourceSuggestions.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {sourceSuggestions.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setForm((p) => ({ ...p, source: item }));
+                              setSourceSuggestions([]);
+                            }}
+                            className="text-xs px-2 py-1 rounded-full border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -583,6 +718,20 @@ export default function Home() {
                     className="mt-1 w-full border border-amber-300 rounded-lg px-3 py-2 bg-amber-50/30"
                     placeholder="ml, basics, llm, rag"
                   />
+                  {activeTagToken && tagSuggestions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {tagSuggestions.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => applyTagSuggestion(tag)}
+                          className="text-xs px-2 py-1 rounded-full border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">

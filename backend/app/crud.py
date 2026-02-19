@@ -90,7 +90,14 @@ def update_question(db: Session, q: models.Question, user_id: uuid.UUID, payload
     db.refresh(q)
     return q
 
-def list_questions(db: Session, user_id: uuid.UUID, search: str | None, tag: str | None, flagged: bool | None):
+def list_questions(
+    db: Session,
+    user_id: uuid.UUID,
+    search: str | None,
+    tag: str | None,
+    source: str | None,
+    flagged: bool | None,
+):
     stmt = select(models.Question).where(models.Question.user_id == user_id)
 
     if flagged is not None:
@@ -115,8 +122,15 @@ def list_questions(db: Session, user_id: uuid.UUID, search: str | None, tag: str
             stmt = stmt.where(and_(*term_clauses))
 
     if tag:
-        t = tag.strip().lower()
-        stmt = stmt.join(models.Question.tags).where(models.Tag.name == t)
+        tag_terms = [t.strip().lower() for t in tag.split(",") if t.strip()]
+        if tag_terms:
+            stmt = stmt.join(models.Question.tags).where(models.Tag.name.in_(tag_terms)).distinct()
+
+    if source:
+        s = source.strip().lower()
+        if s:
+            escaped = s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            stmt = stmt.where(models.Question.source.ilike(f"%{escaped}%", escape="\\"))
 
     stmt = stmt.order_by(models.Question.updated_at.desc())
     return db.execute(stmt).scalars().all()
@@ -124,3 +138,39 @@ def list_questions(db: Session, user_id: uuid.UUID, search: str | None, tag: str
 def get_question(db: Session, user_id: uuid.UUID, qid: uuid.UUID) -> models.Question | None:
     stmt = select(models.Question).where(models.Question.user_id == user_id, models.Question.id == qid)
     return db.execute(stmt).scalars().first()
+
+
+def list_source_suggestions(db: Session, user_id: uuid.UUID, q: str, limit: int = 8) -> list[str]:
+    query = (q or "").strip()
+    stmt = (
+        select(models.Question.source)
+        .where(
+            models.Question.user_id == user_id,
+            models.Question.source.is_not(None),
+            models.Question.source != "",
+        )
+        .distinct()
+        .order_by(models.Question.source.asc())
+        .limit(limit)
+    )
+    if query:
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(models.Question.source.ilike(f"%{escaped}%", escape="\\"))
+
+    return [s for s in db.execute(stmt).scalars().all() if s]
+
+
+def list_tag_suggestions(db: Session, user_id: uuid.UUID, q: str, limit: int = 8) -> list[str]:
+    query = (q or "").strip()
+    stmt = (
+        select(models.Tag.name)
+        .where(models.Tag.user_id == user_id)
+        .distinct()
+        .order_by(models.Tag.name.asc())
+        .limit(limit)
+    )
+    if query:
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(models.Tag.name.ilike(f"%{escaped}%", escape="\\"))
+
+    return [t for t in db.execute(stmt).scalars().all() if t]

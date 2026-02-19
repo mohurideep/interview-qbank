@@ -83,16 +83,34 @@ def list_(
     db: Session = Depends(get_db),
     search: str | None = Query(default=None),
     tag: str | None = Query(default=None),
+    tags: str | None = Query(default=None),
+    source: str | None = Query(default=None),
     flagged: bool | None = Query(default=None),
     due_only: bool | None = Query(default=False),
 ):
-    items = crud.list_questions(db, _user_id(), search, tag, flagged)
+    tag_filter = tags if tags is not None else tag
+    items = crud.list_questions(db, _user_id(), search, tag_filter, source, flagged)
 
     if due_only:
         now = datetime.utcnow()
         items = [q for q in items if (q.next_review_at is None) or (q.next_review_at <= now)]
 
     return [_to_out(q) for q in items]
+
+
+@router.get("/suggestions", response_model=list[str])
+def suggestions(
+    db: Session = Depends(get_db),
+    field: str = Query(..., description='One of: "source", "tag"'),
+    q: str = Query(default=""),
+    limit: int = Query(default=8, ge=1, le=30),
+):
+    field = field.strip().lower()
+    if field == "source":
+        return crud.list_source_suggestions(db, _user_id(), q, limit)
+    if field == "tag":
+        return crud.list_tag_suggestions(db, _user_id(), q, limit)
+    raise HTTPException(status_code=400, detail='Invalid field. Use "source" or "tag".')
 
 
 @router.get("/{qid}", response_model=QuestionOut)
