@@ -430,10 +430,10 @@ export default function Home() {
       <div
         aria-hidden={isCollapsed}
         style={{
-          maxHeight: isCollapsed ? 0 : 2400,
+          maxHeight: isCollapsed ? 0 : "none",
           opacity: isCollapsed ? 0 : 1,
           transform: isCollapsed ? "translateY(-8px)" : "translateY(0)",
-          overflow: "hidden",
+          overflow: isCollapsed ? "hidden" : "visible",
           transition: "max-height 320ms ease, opacity 220ms ease, transform 260ms ease",
         }}
       >
