@@ -46,6 +46,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [topLevelOnly, setTopLevelOnly] = useState(false);
   const [collapsedThreadIds, setCollapsedThreadIds] = useState<Set<string>>(new Set());
+  const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
   const [uiReady, setUiReady] = useState(false);
   const buttonBase =
     "inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium leading-none transition-all duration-200";
@@ -76,7 +77,11 @@ export default function Home() {
     () => questions.filter((q) => q.parent_id && !questionById.has(q.parent_id)),
     [questions, questionById]
   );
-  const displayedRoots = topLevelQuestions;
+  const displayedRoots = useMemo(() => {
+    if (!focusedThreadId) return topLevelQuestions;
+    const focused = topLevelQuestions.find((q) => q.id === focusedThreadId);
+    return focused ? [focused] : topLevelQuestions;
+  }, [topLevelQuestions, focusedThreadId]);
   const sourceOptions = useMemo(
     () =>
       Array.from(
@@ -164,6 +169,11 @@ export default function Home() {
       return next;
     });
   }, [questionById]);
+
+  useEffect(() => {
+    if (!focusedThreadId) return;
+    if (!questionById.has(focusedThreadId)) setFocusedThreadId(null);
+  }, [focusedThreadId, questionById]);
 
   function openAdd(parentId: string | null = null) {
     setMode("add");
@@ -334,6 +344,7 @@ export default function Home() {
     const followupCount = descendantCountById.get(q.id) || 0;
     const hasFollowups = followupCount > 0;
     const threadCollapsed = collapsedThreadIds.has(q.id);
+    const isFocusedRoot = !isFollowup && focusedThreadId === q.id;
 
     return (
       <div
@@ -398,6 +409,20 @@ export default function Home() {
           {!topLevelOnly && hasFollowups && (
             <button onClick={() => toggleThread(q.id)} className={buttonSecondary}>
               {threadCollapsed ? "Expand thread" : "Collapse thread"} {threadCollapsed ? "▸" : "▾"}
+            </button>
+          )}
+
+          {!isFollowup && (
+            <button
+              onClick={() => setFocusedThreadId(isFocusedRoot ? null : q.id)}
+              className={`${buttonBase} border ${
+                isFocusedRoot
+                  ? "bg-amber-700 text-amber-50 border-amber-700"
+                  : "bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100"
+              }`}
+              title="Show only this thread and all its follow-ups"
+            >
+              {isFocusedRoot ? "Exit focus" : "Focus thread"}
             </button>
           )}
 
@@ -555,6 +580,15 @@ export default function Home() {
                 </button>
               </>
             )}
+            {focusedThreadId && (
+              <button
+                onClick={() => setFocusedThreadId(null)}
+                className={`${buttonBase} border bg-amber-700 text-amber-50 border-amber-700`}
+                title="Return to all threads"
+              >
+                Exit focus mode
+              </button>
+            )}
           </div>
         </div>
 
@@ -589,6 +623,12 @@ export default function Home() {
             </div>
           )}
 
+          {!loading && focusedThreadId && displayedRoots.length > 0 && (
+            <div className="text-xs text-amber-900 bg-amber-100/80 border border-amber-300 rounded-xl p-3">
+              Focus mode is on: showing one thread and all of its follow-ups.
+            </div>
+          )}
+
           {displayedRoots.map((q, idx) => (
             <div
               key={q.id}
@@ -604,7 +644,7 @@ export default function Home() {
             </div>
           ))}
 
-          {!loading && !topLevelOnly && orphanFollowups.length > 0 && (
+          {!loading && !topLevelOnly && !focusedThreadId && orphanFollowups.length > 0 && (
             <div className="space-y-2">
               <div className="text-xs font-medium text-slate-500 px-1">Unlinked follow-ups</div>
               {orphanFollowups.map((q) => (
