@@ -46,7 +46,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [topLevelOnly, setTopLevelOnly] = useState(false);
   const [collapsedThreadIds, setCollapsedThreadIds] = useState<Set<string>>(new Set());
-  const [collapseAllThreads, setCollapseAllThreads] = useState(false);
   const [uiReady, setUiReady] = useState(false);
   const buttonBase =
     "inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium leading-none transition-all duration-200";
@@ -320,7 +319,6 @@ export default function Home() {
   }
 
   function toggleThread(id: string) {
-    setCollapseAllThreads(false);
     setCollapsedThreadIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -421,7 +419,7 @@ export default function Home() {
   function renderFollowups(parentId: string, depth = 1, seen = new Set<string>()) {
     const followups = childrenByParentId.get(parentId) || [];
     if (followups.length === 0) return null;
-    const isCollapsed = topLevelOnly || collapseAllThreads || collapsedThreadIds.has(parentId);
+    const isCollapsed = topLevelOnly || collapsedThreadIds.has(parentId);
 
     const nextSeen = new Set(seen);
     nextSeen.add(parentId);
@@ -542,14 +540,13 @@ export default function Home() {
             {!topLevelOnly && (
               <>
                 <button
-                  onClick={() => setCollapseAllThreads(true)}
+                  onClick={() => setCollapsedThreadIds(new Set(childrenByParentId.keys()))}
                   className={buttonSecondary}
                 >
                   Collapse all threads
                 </button>
                 <button
                   onClick={() => {
-                    setCollapseAllThreads(false);
                     setCollapsedThreadIds(new Set());
                   }}
                   className={buttonSecondary}

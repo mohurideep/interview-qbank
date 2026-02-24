@@ -6,6 +6,40 @@ from . import models
 from .schemas import QuestionCreate, QuestionUpdate
 
 
+def _with_ancestors(
+    db: Session,
+    user_id: uuid.UUID,
+    items: list[models.Question],
+) -> list[models.Question]:
+    if not items:
+        return []
+
+    by_id: dict[uuid.UUID, models.Question] = {q.id: q for q in items}
+    frontier = {q.parent_id for q in items if q.parent_id and q.parent_id not in by_id}
+
+    while frontier:
+        parents = db.execute(
+            select(models.Question).where(
+                models.Question.user_id == user_id,
+                models.Question.id.in_(frontier),
+            )
+        ).scalars().all()
+
+        if not parents:
+            break
+
+        next_frontier: set[uuid.UUID] = set()
+        for parent in parents:
+            if parent.id in by_id:
+                continue
+            by_id[parent.id] = parent
+            if parent.parent_id and parent.parent_id not in by_id:
+                next_frontier.add(parent.parent_id)
+        frontier = next_frontier
+
+    return sorted(by_id.values(), key=lambda q: q.updated_at, reverse=True)
+
+
 def _validate_parent_id(
     db: Session,
     user_id: uuid.UUID,
@@ -133,7 +167,8 @@ def list_questions(
             stmt = stmt.where(models.Question.source.ilike(f"%{escaped}%", escape="\\"))
 
     stmt = stmt.order_by(models.Question.updated_at.desc())
-    return db.execute(stmt).scalars().all()
+    matches = db.execute(stmt).scalars().all()
+    return _with_ancestors(db, user_id, matches)
 
 def get_question(db: Session, user_id: uuid.UUID, qid: uuid.UUID) -> models.Question | None:
     stmt = select(models.Question).where(models.Question.user_id == user_id, models.Question.id == qid)
