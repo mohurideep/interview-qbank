@@ -8,10 +8,19 @@ import {
   updateQuestion,
   deleteQuestion,
   getQuestionSuggestions,
+  exportQuestionsDocx,
 } from "@/lib/api";
 import MarkdownAnswer from "@/components/MarkdownAnswer";
 
 type Mode = "add" | "edit";
+
+function DownloadIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2h16v-2" />
+    </svg>
+  );
+}
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -47,6 +56,8 @@ export default function Home() {
   const [topLevelOnly, setTopLevelOnly] = useState(false);
   const [collapsedThreadIds, setCollapsedThreadIds] = useState<Set<string>>(new Set());
   const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
+  const [exportingAll, setExportingAll] = useState(false);
+  const [exportingThreadId, setExportingThreadId] = useState<string | null>(null);
   const [uiReady, setUiReady] = useState(false);
   const buttonBase =
     "inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium leading-none transition-all duration-200";
@@ -304,6 +315,52 @@ export default function Home() {
     }
   }
 
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 500);
+  }
+
+  async function onExportAll() {
+    setExportingAll(true);
+    setError(null);
+    try {
+      const blob = await exportQuestionsDocx({
+        search: search.trim() || undefined,
+        source: sourceFilter.trim() || undefined,
+        tags:
+          tagsFilter
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .join(",") || undefined,
+      });
+      downloadBlob(blob, `interview-qbank-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.docx`);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to export questions"));
+    } finally {
+      setExportingAll(false);
+    }
+  }
+
+  async function onExportThread(threadId: string) {
+    setExportingThreadId(threadId);
+    setError(null);
+    try {
+      const blob = await exportQuestionsDocx({ thread_id: threadId });
+      downloadBlob(blob, `thread-${threadId}.docx`);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to export thread"));
+    } finally {
+      setExportingThreadId((prev) => (prev === threadId ? null : prev));
+    }
+  }
+
   function escapeRegExp(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
@@ -426,6 +483,18 @@ export default function Home() {
             </button>
           )}
 
+          {!isFollowup && (
+            <button
+              onClick={() => onExportThread(q.id)}
+              className={buttonSecondary}
+              title="Export this thread to Word (.docx)"
+              disabled={exportingThreadId === q.id}
+            >
+              <DownloadIcon className="w-4 h-4 mr-1.5" />
+              {exportingThreadId === q.id ? "Exporting..." : "Export thread"}
+            </button>
+          )}
+
           <button onClick={() => onDelete(q.id)} className={buttonDanger}>
             Delete
           </button>
@@ -496,6 +565,15 @@ export default function Home() {
             <a href="/dashboard" className={buttonSecondary}>
               Dashboard
             </a>
+            <button
+              onClick={onExportAll}
+              className={buttonSecondary}
+              title="Export all visible questions and answers to Word (.docx)"
+              disabled={exportingAll}
+            >
+              <DownloadIcon className="w-4 h-4 mr-1.5" />
+              {exportingAll ? "Exporting..." : "Export"}
+            </button>
             <button onClick={() => openAdd()} className={buttonPrimary}>
               + Add
             </button>

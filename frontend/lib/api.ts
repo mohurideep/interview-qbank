@@ -76,6 +76,27 @@ async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Prom
   return (await res.json()) as T;
 }
 
+async function apiFetchBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      const j = await res.json().catch(() => null);
+      const msg = j?.detail || j?.message || JSON.stringify(j);
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  return res.blob();
+}
+
 // --------------------
 // Auth APIs (cookie based)
 // --------------------
@@ -173,6 +194,25 @@ export async function reviewQuestion(id: string, rating: "forgot" | "almost" | "
     `/v1/questions/${id}/review?${usp.toString()}`,
     { method: "POST" }
   );
+}
+
+export async function exportQuestionsDocx(params?: {
+  thread_id?: string;
+  search?: string;
+  source?: string;
+  tags?: string;
+  due_only?: boolean;
+}) {
+  const usp = new URLSearchParams();
+  if (params?.thread_id) usp.set("thread_id", params.thread_id);
+  if (params?.search) usp.set("search", params.search);
+  if (params?.source) usp.set("source", params.source);
+  if (params?.tags) usp.set("tags", params.tags);
+  if (params?.due_only !== undefined) usp.set("due_only", String(params.due_only));
+
+  const qs = usp.toString();
+  const path = qs ? `/v1/questions/export?${qs}` : "/v1/questions/export";
+  return apiFetchBlob(path, { method: "GET" });
 }
 
 // --------------------
