@@ -209,3 +209,43 @@ def list_tag_suggestions(db: Session, user_id: uuid.UUID, q: str, limit: int = 8
         stmt = stmt.where(models.Tag.name.ilike(f"%{escaped}%", escape="\\"))
 
     return [t for t in db.execute(stmt).scalars().all() if t]
+
+
+def list_thread_questions(
+    db: Session,
+    user_id: uuid.UUID,
+    root_id: uuid.UUID,
+) -> list[models.Question]:
+    root = get_question(db, user_id, root_id)
+    if not root:
+        return []
+
+    all_questions = db.execute(
+        select(models.Question)
+        .where(models.Question.user_id == user_id)
+        .order_by(models.Question.created_at.asc(), models.Question.updated_at.asc())
+    ).scalars().all()
+
+    by_parent: dict[uuid.UUID, list[models.Question]] = {}
+    for q in all_questions:
+        if q.parent_id is None:
+            continue
+        children = by_parent.get(q.parent_id)
+        if children is None:
+            children = []
+            by_parent[q.parent_id] = children
+        children.append(q)
+
+    ordered: list[models.Question] = []
+    seen: set[uuid.UUID] = set()
+
+    def visit(node: models.Question) -> None:
+        if node.id in seen:
+            return
+        seen.add(node.id)
+        ordered.append(node)
+        for child in by_parent.get(node.id, []):
+            visit(child)
+
+    visit(root)
+    return ordered
