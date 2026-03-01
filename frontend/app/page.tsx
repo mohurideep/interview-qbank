@@ -24,6 +24,23 @@ function DownloadIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
+function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className} aria-hidden="true">
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" className={className} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
   return fallback;
@@ -67,6 +84,7 @@ export default function Home() {
   const [draggedChild, setDraggedChild] = useState<{ childId: string; parentId: string } | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<{ parentId: string; index: number } | null>(null);
   const [reorderingParentId, setReorderingParentId] = useState<string | null>(null);
+  const [copiedQuestionId, setCopiedQuestionId] = useState<string | null>(null);
   const [uiReady, setUiReady] = useState(false);
   const buttonBase =
     "inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium leading-none transition-all duration-200";
@@ -345,6 +363,20 @@ export default function Home() {
     }
   }
 
+  async function onCopyQuestionAndAnswer(q: Question) {
+    const payload = `Question:\n${q.question_text}\n\nAnswer:\n${q.answer_md || "No answer added yet."}`;
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopiedQuestionId(q.id);
+      window.setTimeout(() => {
+        setCopiedQuestionId((current) => (current === q.id ? null : current));
+      }, 1400);
+    } catch {
+      setError("Failed to copy content to clipboard");
+    }
+  }
+
   function downloadBlob(blob: Blob, filename: string) {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -615,7 +647,25 @@ export default function Home() {
         }`}
       >
         <div className="flex items-start justify-between gap-4">
-          <h2 className="font-semibold text-stone-900">{highlightMatches(q.question_text)}</h2>
+          <div className="flex items-start gap-2 min-w-0 flex-1">
+            <h2 className="font-semibold text-stone-900">{highlightMatches(q.question_text)}</h2>
+            <button
+              onClick={() => void onCopyQuestionAndAnswer(q)}
+              className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                copiedQuestionId === q.id
+                  ? "border-emerald-400 bg-emerald-100 text-emerald-700"
+                  : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+              }`}
+              title={copiedQuestionId === q.id ? "Copied" : "Copy question + answer"}
+              aria-label={copiedQuestionId === q.id ? "Copied" : "Copy question and answer"}
+            >
+              {copiedQuestionId === q.id ? (
+                <CheckIcon className="w-3.5 h-3.5" />
+              ) : (
+                <CopyIcon className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
           <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-900">
             L{q.difficulty}
           </span>
@@ -669,7 +719,6 @@ export default function Home() {
           <button onClick={() => setExpandedId(expanded ? null : q.id)} className={buttonSecondary}>
             {expanded ? "Hide answer" : "Show answer"}
           </button>
-
           <button onClick={() => openEdit(q)} className={buttonSecondary}>
             Edit
           </button>
