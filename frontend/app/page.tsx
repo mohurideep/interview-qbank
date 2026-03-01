@@ -58,6 +58,7 @@ export default function Home() {
   const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
   const [exportingAll, setExportingAll] = useState(false);
   const [exportingThreadId, setExportingThreadId] = useState<string | null>(null);
+  const [markingStudiedThreadId, setMarkingStudiedThreadId] = useState<string | null>(null);
   const [uiReady, setUiReady] = useState(false);
   const buttonBase =
     "inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium leading-none transition-all duration-200";
@@ -361,6 +362,26 @@ export default function Home() {
     }
   }
 
+  async function onMarkThreadStudied(threadId: string) {
+    setMarkingStudiedThreadId(threadId);
+    setError(null);
+    try {
+      await updateQuestion(threadId, { studied_at: new Date().toISOString() });
+      await refresh({ search, source: sourceFilter, tags: tagsFilter });
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to mark thread as studied"));
+    } finally {
+      setMarkingStudiedThreadId((prev) => (prev === threadId ? null : prev));
+    }
+  }
+
+  function formatStudiedAt(value: string | null) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
+  }
+
   function escapeRegExp(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
@@ -449,6 +470,9 @@ export default function Home() {
         )}
 
         {q.source && <p className="mt-2 text-xs text-stone-600">Source: {q.source}</p>}
+        {!isFollowup && q.studied_at && (
+          <p className="mt-2 text-xs text-emerald-700">Studied: {formatStudiedAt(q.studied_at)}</p>
+        )}
 
         <div className="mt-3 flex flex-wrap gap-2">
           <button onClick={() => setExpandedId(expanded ? null : q.id)} className={buttonSecondary}>
@@ -480,6 +504,21 @@ export default function Home() {
               title="Show only this thread and all its follow-ups"
             >
               {isFocusedRoot ? "Exit focus" : "Focus thread"}
+            </button>
+          )}
+
+          {!isFollowup && (
+            <button
+              onClick={() => onMarkThreadStudied(q.id)}
+              className={buttonSecondary}
+              title="Mark this parent thread as studied at the current date and time"
+              disabled={markingStudiedThreadId === q.id}
+            >
+              {markingStudiedThreadId === q.id
+                ? "Saving..."
+                : q.studied_at
+                  ? "Update studied time"
+                  : "Mark studied"}
             </button>
           )}
 

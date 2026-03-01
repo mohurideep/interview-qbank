@@ -6,6 +6,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:80
 export type Question = {
   id: string;
   parent_id: string | null;
+  studied_at: string | null;
   question_text: string;
   answer_md: string;
   difficulty: number;
@@ -32,6 +33,7 @@ export type QuestionCreate = {
 // ✅ PATCH supports partial fields
 export type QuestionUpdate = Partial<QuestionCreate> & {
   is_flagged?: boolean;
+  studied_at?: string | null;
 };
 
 export type Me = {
