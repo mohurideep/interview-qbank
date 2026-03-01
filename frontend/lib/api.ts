@@ -7,6 +7,8 @@ export type Question = {
   id: string;
   parent_id: string | null;
   studied_at: string | null;
+  studied_count: number;
+  studied_history: string[];
   question_text: string;
   answer_md: string;
   difficulty: number;

@@ -13,6 +13,7 @@ import {
 import MarkdownAnswer from "@/components/MarkdownAnswer";
 
 type Mode = "add" | "edit";
+const IST_TIME_ZONE = "Asia/Kolkata";
 
 function DownloadIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -59,6 +60,9 @@ export default function Home() {
   const [exportingAll, setExportingAll] = useState(false);
   const [exportingThreadId, setExportingThreadId] = useState<string | null>(null);
   const [markingStudiedThreadId, setMarkingStudiedThreadId] = useState<string | null>(null);
+  const [historyOpenThreadIds, setHistoryOpenThreadIds] = useState<Set<string>>(new Set());
+  const [studiedDialogThreadId, setStudiedDialogThreadId] = useState<string | null>(null);
+  const [studiedDialogValue, setStudiedDialogValue] = useState("");
   const [uiReady, setUiReady] = useState(false);
   const buttonBase =
     "inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium leading-none transition-all duration-200";
@@ -362,24 +366,115 @@ export default function Home() {
     }
   }
 
-  async function onMarkThreadStudied(threadId: string) {
+  async function onMarkThreadStudied(threadId: string, studiedAtIso: string) {
     setMarkingStudiedThreadId(threadId);
     setError(null);
+    let success = false;
     try {
-      await updateQuestion(threadId, { studied_at: new Date().toISOString() });
+      await updateQuestion(threadId, { studied_at: studiedAtIso });
       await refresh({ search, source: sourceFilter, tags: tagsFilter });
+      success = true;
     } catch (error: unknown) {
       setError(getErrorMessage(error, "Failed to mark thread as studied"));
     } finally {
       setMarkingStudiedThreadId((prev) => (prev === threadId ? null : prev));
     }
+    return success;
   }
 
   function formatStudiedAt(value: string | null) {
     if (!value) return "";
+    const naiveMatch = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+    if (naiveMatch) {
+      const year = Number(naiveMatch[1]);
+      const month = Number(naiveMatch[2]);
+      const day = Number(naiveMatch[3]);
+      const hour24 = Number(naiveMatch[4]);
+      const minute = Number(naiveMatch[5]);
+      const second = Number(naiveMatch[6] || "0");
+
+      const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+      const meridiem = hour24 >= 12 ? "pm" : "am";
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(day)}/${pad(month)}/${year}, ${hour12}:${pad(minute)}:${pad(second)} ${meridiem}`;
+    }
+
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString();
+    return date.toLocaleString("en-IN", {
+      timeZone: IST_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  }
+
+  function toIstDateTimeInputValue(isoValue: string) {
+    const naiveMatch = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/.exec(isoValue);
+    if (naiveMatch) return naiveMatch[1];
+
+    const date = new Date(isoValue);
+    if (Number.isNaN(date.getTime())) return "";
+
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: IST_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+
+    const map = new Map(parts.map((part) => [part.type, part.value]));
+    const year = map.get("year");
+    const month = map.get("month");
+    const day = map.get("day");
+    const hour = map.get("hour");
+    const minute = map.get("minute");
+
+    if (!year || !month || !day || !hour || !minute) return "";
+    return `${year}-${month}-${day}T${hour}:${minute}`;
+  }
+
+  function istDateTimeInputToIso(value: string) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+    if (!match) return null;
+    return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00`;
+  }
+
+  function openStudiedDialog(q: Question) {
+    const seedIso = q.studied_at || new Date().toISOString();
+    setStudiedDialogThreadId(q.id);
+    setStudiedDialogValue(toIstDateTimeInputValue(seedIso));
+  }
+
+  async function onSaveStudiedDateTime() {
+    if (!studiedDialogThreadId || !studiedDialogValue) return;
+    const selectedIso = istDateTimeInputToIso(studiedDialogValue);
+    if (!selectedIso) {
+      setError("Invalid date/time selected");
+      return;
+    }
+
+    const saved = await onMarkThreadStudied(studiedDialogThreadId, selectedIso);
+    if (saved) {
+      setStudiedDialogThreadId(null);
+      setStudiedDialogValue("");
+    }
+  }
+
+  function toggleStudyHistory(threadId: string) {
+    setHistoryOpenThreadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(threadId)) next.delete(threadId);
+      else next.add(threadId);
+      return next;
+    });
   }
 
   function escapeRegExp(value: string) {
@@ -423,6 +518,8 @@ export default function Home() {
     const hasFollowups = followupCount > 0;
     const threadCollapsed = collapsedThreadIds.has(q.id);
     const isFocusedRoot = !isFollowup && focusedThreadId === q.id;
+    const studiedCount = q.studied_count || 0;
+    const isHistoryOpen = historyOpenThreadIds.has(q.id);
 
     return (
       <div
@@ -452,6 +549,11 @@ export default function Home() {
           {hasFollowups && (
             <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-800">
               {followupCount} follow-up{followupCount === 1 ? "" : "s"}
+            </span>
+          )}
+          {!isFollowup && studiedCount > 0 && (
+            <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800">
+              studied {studiedCount} time{studiedCount === 1 ? "" : "s"}
             </span>
           )}
 
@@ -509,9 +611,9 @@ export default function Home() {
 
           {!isFollowup && (
             <button
-              onClick={() => onMarkThreadStudied(q.id)}
+              onClick={() => openStudiedDialog(q)}
               className={buttonSecondary}
-              title="Mark this parent thread as studied at the current date and time"
+              title="Select a date and time to mark this parent thread as studied"
               disabled={markingStudiedThreadId === q.id}
             >
               {markingStudiedThreadId === q.id
@@ -519,6 +621,15 @@ export default function Home() {
                 : q.studied_at
                   ? "Update studied time"
                   : "Mark studied"}
+            </button>
+          )}
+          {!isFollowup && studiedCount > 0 && (
+            <button
+              onClick={() => toggleStudyHistory(q.id)}
+              className={buttonSecondary}
+              title="Show study history for this thread"
+            >
+              {isHistoryOpen ? "Hide history" : "Show history"}
             </button>
           )}
 
@@ -544,6 +655,20 @@ export default function Home() {
             className="mt-3 text-sm text-stone-800 bg-amber-50/70 border border-amber-200 rounded-xl p-3 animate-[fadeIn_220ms_ease-out]"
             content={q.answer_md || "No answer added yet."}
           />
+        )}
+        {!isFollowup && isHistoryOpen && studiedCount > 0 && (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+            <p className="text-xs font-medium text-emerald-800 mb-2">
+              Study history ({studiedCount})
+            </p>
+            <div className="space-y-1">
+              {q.studied_history.map((entry, idx) => (
+                <p key={`${q.id}-study-${idx}`} className="text-xs text-emerald-700">
+                  {idx + 1}. {formatStudiedAt(entry)}
+                </p>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     );
@@ -907,6 +1032,53 @@ export default function Home() {
                       : mode === "add"
                         ? "Save"
                         : "Update"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {studiedDialogThreadId && (
+          <div className="fixed inset-0 bg-stone-900/35 backdrop-blur-[2px] flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-2xl border border-amber-200 shadow-xl p-4 animate-[fadeIn_180ms_ease-out]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-lg">Set Studied Date &amp; Time</h3>
+                <button
+                  onClick={() => {
+                    setStudiedDialogThreadId(null);
+                    setStudiedDialogValue("");
+                  }}
+                  className={buttonSecondary}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm text-stone-700">Studied at (IST)</label>
+                  <input
+                    type="datetime-local"
+                    value={studiedDialogValue}
+                    onChange={(e) => setStudiedDialogValue(e.target.value)}
+                    className="mt-1 w-full border border-amber-300 rounded-lg px-3 py-2 bg-amber-50/30"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setStudiedDialogThreadId(null);
+                      setStudiedDialogValue("");
+                    }}
+                    className={buttonSecondary}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void onSaveStudiedDateTime()}
+                    disabled={!studiedDialogValue || markingStudiedThreadId === studiedDialogThreadId}
+                    className={`${buttonPrimary} disabled:opacity-50`}
+                  >
+                    {markingStudiedThreadId === studiedDialogThreadId ? "Saving..." : "Save studied time"}
                   </button>
                 </div>
               </div>
