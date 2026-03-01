@@ -9,6 +9,7 @@ import {
   deleteQuestion,
   getQuestionSuggestions,
   exportQuestionsDocx,
+  reorderChildren,
 } from "@/lib/api";
 import MarkdownAnswer from "@/components/MarkdownAnswer";
 
@@ -63,6 +64,9 @@ export default function Home() {
   const [historyOpenThreadIds, setHistoryOpenThreadIds] = useState<Set<string>>(new Set());
   const [studiedDialogThreadId, setStudiedDialogThreadId] = useState<string | null>(null);
   const [studiedDialogValue, setStudiedDialogValue] = useState("");
+  const [draggedChild, setDraggedChild] = useState<{ childId: string; parentId: string } | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<{ parentId: string; index: number } | null>(null);
+  const [reorderingParentId, setReorderingParentId] = useState<string | null>(null);
   const [uiReady, setUiReady] = useState(false);
   const buttonBase =
     "inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium leading-none transition-all duration-200";
@@ -84,6 +88,15 @@ export default function Home() {
       const list = grouped.get(q.parent_id) || [];
       list.push(q);
       grouped.set(q.parent_id, list);
+    }
+    for (const [parentId, list] of grouped.entries()) {
+      list.sort((a, b) => {
+        const orderDiff = (a.child_order ?? 0) - (b.child_order ?? 0);
+        if (orderDiff !== 0) return orderDiff;
+        if (a.created_at === b.created_at) return a.id.localeCompare(b.id);
+        return a.created_at.localeCompare(b.created_at);
+      });
+      grouped.set(parentId, list);
     }
     return grouped;
   }, [questions]);
@@ -320,6 +333,18 @@ export default function Home() {
     }
   }
 
+  async function onMoveChildToTopLevel(id: string) {
+    setError(null);
+    try {
+      await updateQuestion(id, { parent_id: null });
+      await refresh({ search, source: sourceFilter, tags: tagsFilter });
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to move question out of parent"));
+    } finally {
+      clearDragState();
+    }
+  }
+
   function downloadBlob(blob: Blob, filename: string) {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -477,6 +502,65 @@ export default function Home() {
     });
   }
 
+  function clearDragState() {
+    setDraggedChild(null);
+    setDragOverSlot(null);
+  }
+
+  function reorderIds(current: string[], draggedId: string, targetIndex: number): string[] {
+    const filtered = current.filter((id) => id !== draggedId);
+    const boundedIndex = Math.max(0, Math.min(targetIndex, filtered.length));
+    filtered.splice(boundedIndex, 0, draggedId);
+    return filtered;
+  }
+
+  async function onReorderChildren(parentId: string, orderedChildIds: string[]) {
+    if (orderedChildIds.length <= 1) {
+      clearDragState();
+      return;
+    }
+
+    const previous = questions;
+    setReorderingParentId(parentId);
+    setError(null);
+
+    setQuestions((prev) =>
+      prev.map((q) => {
+        if (q.parent_id !== parentId) return q;
+        const nextIndex = orderedChildIds.indexOf(q.id);
+        if (nextIndex < 0) return q;
+        return { ...q, child_order: nextIndex };
+      })
+    );
+
+    try {
+      await reorderChildren(parentId, orderedChildIds);
+    } catch (error: unknown) {
+      setQuestions(previous);
+      setError(getErrorMessage(error, "Failed to reorder child questions"));
+    } finally {
+      setReorderingParentId((current) => (current === parentId ? null : current));
+      clearDragState();
+    }
+  }
+
+  async function onMoveChildIntoQuestion(childId: string, newParentId: string) {
+    if (childId === newParentId) {
+      clearDragState();
+      return;
+    }
+
+    setError(null);
+    try {
+      await updateQuestion(childId, { parent_id: newParentId });
+      await refresh({ search, source: sourceFilter, tags: tagsFilter });
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to move question into target thread"));
+    } finally {
+      clearDragState();
+    }
+  }
+
   function escapeRegExp(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
@@ -568,6 +652,11 @@ export default function Home() {
           <p className="mt-2 text-xs text-stone-600">
             Child of: {" "}
             {parent?.question_text ? highlightMatches(parent.question_text) : "Parent not in current list"}
+          </p>
+        )}
+        {isFollowup && (
+          <p className="mt-1 text-[11px] text-amber-700/80">
+            Drag to reorder. Drop on another follow-up card to nest it inside that question.
           </p>
         )}
 
@@ -678,6 +767,8 @@ export default function Home() {
     const followups = childrenByParentId.get(parentId) || [];
     if (followups.length === 0) return null;
     const isCollapsed = topLevelOnly || collapsedThreadIds.has(parentId);
+    const isActiveDragParent = draggedChild?.parentId === parentId;
+    const isBusy = reorderingParentId === parentId;
 
     const nextSeen = new Set(seen);
     nextSeen.add(parentId);
@@ -699,13 +790,90 @@ export default function Home() {
               ? "ml-5 pl-4 border-l-2 border-amber-300 bg-amber-50/50 rounded-r-xl py-2"
               : "ml-4 pl-4 border-l border-amber-200"
           }`}
+          onDragOver={(event) => {
+            if (!draggedChild || draggedChild.parentId !== parentId || isBusy) return;
+            if (event.target !== event.currentTarget) return;
+            event.preventDefault();
+            setDragOverSlot({ parentId, index: followups.length });
+          }}
+          onDrop={(event) => {
+            if (!draggedChild || draggedChild.parentId !== parentId || isBusy) return;
+            if (event.target !== event.currentTarget) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const currentIds = followups.map((child) => child.id);
+            const nextIds = reorderIds(currentIds, draggedChild.childId, followups.length);
+            void onReorderChildren(parentId, nextIds);
+          }}
         >
-          {followups.map((child) => (
-            <div key={child.id} className="space-y-2">
-              {renderQuestionCard(child, true)}
-              {!nextSeen.has(child.id) && renderFollowups(child.id, depth + 1, nextSeen)}
-            </div>
-          ))}
+          {followups.map((child, index) => {
+            const beforeActive = isActiveDragParent && dragOverSlot?.parentId === parentId && dragOverSlot.index === index;
+            const afterActive =
+              isActiveDragParent && dragOverSlot?.parentId === parentId && dragOverSlot.index === index + 1;
+            const isDraggingThis = draggedChild?.childId === child.id;
+
+            return (
+              <div key={child.id} className="space-y-2">
+                <div
+                  className={`h-2 rounded transition-colors ${beforeActive ? "bg-amber-300/80" : "bg-transparent"}`}
+                  onDragOver={(event) => {
+                    if (!draggedChild || draggedChild.parentId !== parentId || isBusy) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDragOverSlot({ parentId, index });
+                  }}
+                  onDrop={(event) => {
+                    if (!draggedChild || draggedChild.parentId !== parentId || isBusy) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const currentIds = followups.map((item) => item.id);
+                    const nextIds = reorderIds(currentIds, draggedChild.childId, index);
+                    void onReorderChildren(parentId, nextIds);
+                  }}
+                />
+                <div
+                  draggable={!isBusy}
+                  onDragStart={() => setDraggedChild({ childId: child.id, parentId })}
+                  onDragEnd={() => clearDragState()}
+                  onDragOver={(event) => {
+                    if (!draggedChild || isBusy) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onDrop={(event) => {
+                    if (!draggedChild || isBusy) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void onMoveChildIntoQuestion(draggedChild.childId, child.id);
+                  }}
+                  className={`${isDraggingThis ? "opacity-60" : ""}`}
+                >
+                  {renderQuestionCard(child, true)}
+                </div>
+                <div
+                  className={`h-2 rounded transition-colors ${afterActive ? "bg-amber-300/80" : "bg-transparent"}`}
+                  onDragOver={(event) => {
+                    if (!draggedChild || draggedChild.parentId !== parentId || isBusy) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDragOverSlot({ parentId, index: index + 1 });
+                  }}
+                  onDrop={(event) => {
+                    if (!draggedChild || draggedChild.parentId !== parentId || isBusy) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const currentIds = followups.map((item) => item.id);
+                    const nextIds = reorderIds(currentIds, draggedChild.childId, index + 1);
+                    void onReorderChildren(parentId, nextIds);
+                  }}
+                />
+                {!nextSeen.has(child.id) && renderFollowups(child.id, depth + 1, nextSeen)}
+              </div>
+            );
+          })}
+          {isBusy && (
+            <p className="text-[11px] text-amber-700 px-1">Saving order...</p>
+          )}
         </div>
       </div>
     );
@@ -868,6 +1036,23 @@ export default function Home() {
           {!loading && focusedThreadId && displayedRoots.length > 0 && (
             <div className="text-xs text-amber-900 bg-amber-100/80 border border-amber-300 rounded-xl p-3">
               Focus mode is on: showing one thread and all of its follow-ups.
+            </div>
+          )}
+
+          {draggedChild && (
+            <div
+              className="rounded-xl border-2 border-dashed border-amber-400 bg-amber-100/60 p-3 text-sm text-amber-900"
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void onMoveChildToTopLevel(draggedChild.childId);
+              }}
+            >
+              Drop here to move this follow-up question out of parent (make top-level).
             </div>
           )}
 

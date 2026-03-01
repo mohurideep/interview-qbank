@@ -6,6 +6,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:80
 export type Question = {
   id: string;
   parent_id: string | null;
+  child_order: number;
   studied_at: string | null;
   studied_count: number;
   studied_history: string[];
@@ -198,6 +199,13 @@ export async function reviewQuestion(id: string, rating: "forgot" | "almost" | "
     `/v1/questions/${id}/review?${usp.toString()}`,
     { method: "POST" }
   );
+}
+
+export async function reorderChildren(parent_id: string, ordered_child_ids: string[]) {
+  return apiFetch<{ status: string }>("/v1/questions/reorder-children", {
+    method: "POST",
+    body: JSON.stringify({ parent_id, ordered_child_ids }),
+  });
 }
 
 export async function exportQuestionsDocx(params?: {
