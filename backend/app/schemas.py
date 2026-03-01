@@ -33,6 +33,7 @@ class QuestionOut(BaseModel):
     id: uuid.UUID
     question_text: str
     answer_md: str
+    child_order: int
     difficulty: int
     source: str
     is_flagged: bool
@@ -48,3 +49,8 @@ class QuestionOut(BaseModel):
 
     # Follow-up support
     parent_id: uuid.UUID | None = None
+
+
+class ReorderChildrenIn(BaseModel):
+    parent_id: uuid.UUID
+    ordered_child_ids: List[uuid.UUID] = Field(default_factory=list)

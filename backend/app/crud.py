@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from . import models
 from .schemas import QuestionCreate, QuestionUpdate
 
@@ -84,12 +84,30 @@ def _get_or_create_tags(db: Session, user_id: uuid.UUID, names: list[str]) -> li
         result.append(tag)
     return result
 
+
+def _next_child_order(
+    db: Session,
+    user_id: uuid.UUID,
+    parent_id: uuid.UUID,
+    exclude_id: uuid.UUID | None = None,
+) -> int:
+    stmt = select(func.max(models.Question.child_order)).where(
+        models.Question.user_id == user_id,
+        models.Question.parent_id == parent_id,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(models.Question.id != exclude_id)
+    current_max = db.execute(stmt).scalar_one_or_none()
+    return int(current_max if current_max is not None else -1) + 1
+
 def create_question(db: Session, user_id: uuid.UUID, payload: QuestionCreate) -> models.Question:
     _validate_parent_id(db, user_id, payload.parent_id)
+    child_order = _next_child_order(db, user_id, payload.parent_id) if payload.parent_id else 0
 
     q = models.Question(
         user_id=user_id,
         parent_id=payload.parent_id,
+        child_order=child_order,
         question_text=payload.question_text,
         answer_md=payload.answer_md,
         difficulty=payload.difficulty,
@@ -103,6 +121,7 @@ def create_question(db: Session, user_id: uuid.UUID, payload: QuestionCreate) ->
     return q
 
 def update_question(db: Session, q: models.Question, user_id: uuid.UUID, payload: QuestionUpdate) -> models.Question:
+    old_parent_id = q.parent_id
     if payload.question_text is not None:
         q.question_text = payload.question_text
     if payload.answer_md is not None:
@@ -117,7 +136,12 @@ def update_question(db: Session, q: models.Question, user_id: uuid.UUID, payload
         q.tags = _get_or_create_tags(db, user_id, payload.tags)
     if "parent_id" in payload.model_fields_set:
         _validate_parent_id(db, user_id, payload.parent_id, child_id=q.id)
-        q.parent_id = payload.parent_id
+        if payload.parent_id != old_parent_id:
+            q.parent_id = payload.parent_id
+            if payload.parent_id:
+                q.child_order = _next_child_order(db, user_id, payload.parent_id, exclude_id=q.id)
+            elif old_parent_id is not None:
+                q.child_order = 0
     if "studied_at" in payload.model_fields_set:
         q.studied_at = payload.studied_at
         if payload.studied_at is not None:
@@ -232,7 +256,12 @@ def list_thread_questions(
     all_questions = db.execute(
         select(models.Question)
         .where(models.Question.user_id == user_id)
-        .order_by(models.Question.created_at.asc(), models.Question.updated_at.asc())
+        .order_by(
+            models.Question.parent_id.asc().nullsfirst(),
+            models.Question.child_order.asc(),
+            models.Question.created_at.asc(),
+            models.Question.updated_at.asc(),
+        )
     ).scalars().all()
 
     by_parent: dict[uuid.UUID, list[models.Question]] = {}
@@ -258,3 +287,35 @@ def list_thread_questions(
 
     visit(root)
     return ordered
+
+
+def reorder_children(
+    db: Session,
+    user_id: uuid.UUID,
+    parent_id: uuid.UUID,
+    ordered_child_ids: list[uuid.UUID],
+) -> None:
+    parent = get_question(db, user_id, parent_id)
+    if not parent:
+        raise ValueError("Parent question not found")
+
+    children = db.execute(
+        select(models.Question).where(
+            models.Question.user_id == user_id,
+            models.Question.parent_id == parent_id,
+        )
+    ).scalars().all()
+
+    if not children:
+        raise ValueError("Parent has no follow-up questions")
+
+    current_ids = {child.id for child in children}
+    ordered_ids = list(ordered_child_ids)
+    if len(ordered_ids) != len(current_ids) or set(ordered_ids) != current_ids:
+        raise ValueError("ordered_child_ids must include exactly all child question IDs for this parent")
+
+    children_by_id = {child.id: child for child in children}
+    for idx, child_id in enumerate(ordered_ids):
+        children_by_id[child_id].child_order = idx
+
+    db.commit()

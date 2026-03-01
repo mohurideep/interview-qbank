@@ -44,6 +44,7 @@ class Question(Base):
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     answer_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
+    child_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     difficulty: Mapped[int] = mapped_column(Integer, default=3)
     source: Mapped[str] = mapped_column(String(300), default="")
     is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -10,7 +10,7 @@ from docx import Document
 from ..db import get_db
 from ..settings import settings
 from .. import crud
-from ..schemas import QuestionCreate, QuestionUpdate, QuestionOut
+from ..schemas import QuestionCreate, QuestionUpdate, QuestionOut, ReorderChildrenIn
 
 router = APIRouter(prefix="/v1/questions", tags=["questions"])
 
@@ -31,6 +31,7 @@ def _to_out(q) -> QuestionOut:
     return QuestionOut(
         id=q.id,
         parent_id=q.parent_id,
+        child_order=q.child_order,
         studied_at=q.studied_at,
         studied_count=len(history),
         studied_history=history,
@@ -215,6 +216,15 @@ def suggestions(
     if field == "tag":
         return crud.list_tag_suggestions(db, _user_id(), q, limit)
     raise HTTPException(status_code=400, detail='Invalid field. Use "source" or "tag".')
+
+
+@router.post("/reorder-children")
+def reorder_children(payload: ReorderChildrenIn, db: Session = Depends(get_db)):
+    try:
+        crud.reorder_children(db, _user_id(), payload.parent_id, payload.ordered_child_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok"}
 
 
 @router.get("/{qid}", response_model=QuestionOut)
