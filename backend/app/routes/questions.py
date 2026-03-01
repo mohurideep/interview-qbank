@@ -25,10 +25,15 @@ def _user_id() -> uuid.UUID:
 
 
 def _to_out(q) -> QuestionOut:
+    history = [event.studied_at for event in (q.study_events or [])]
+    if not history and q.studied_at is not None:
+        history = [q.studied_at]
     return QuestionOut(
         id=q.id,
         parent_id=q.parent_id,
         studied_at=q.studied_at,
+        studied_count=len(history),
+        studied_history=history,
         question_text=q.question_text,
         answer_md=q.answer_md,
         difficulty=q.difficulty,

@@ -64,6 +64,13 @@ class Question(Base):
         back_populates="questions",
         lazy="selectin",
     )
+    study_events: Mapped[list["QuestionStudyEvent"]] = relationship(
+        "QuestionStudyEvent",
+        back_populates="question",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="QuestionStudyEvent.studied_at.desc()",
+    )
 
 
 class Tag(Base):
@@ -92,6 +99,21 @@ class QuestionTag(Base):
         ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     )
+
+
+class QuestionStudyEvent(Base):
+    __tablename__ = "question_study_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    question_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("questions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    studied_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    question: Mapped["Question"] = relationship("Question", back_populates="study_events")
 
 
 class User(Base):

@@ -120,6 +120,13 @@ def update_question(db: Session, q: models.Question, user_id: uuid.UUID, payload
         q.parent_id = payload.parent_id
     if "studied_at" in payload.model_fields_set:
         q.studied_at = payload.studied_at
+        if payload.studied_at is not None:
+            db.add(
+                models.QuestionStudyEvent(
+                    question_id=q.id,
+                    studied_at=payload.studied_at,
+                )
+            )
 
     q.updated_at = datetime.utcnow()
     db.commit()

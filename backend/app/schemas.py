@@ -43,6 +43,8 @@ class QuestionOut(BaseModel):
     mastery_score: float
     next_review_at: datetime
     studied_at: datetime | None = None
+    studied_count: int = 0
+    studied_history: List[datetime] = Field(default_factory=list)
 
     # Follow-up support
     parent_id: uuid.UUID | None = None
