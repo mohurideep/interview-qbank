@@ -6,16 +6,29 @@ A full-stack question bank for interview prep, built with:
 - Backend: FastAPI + SQLAlchemy + Alembic + PostgreSQL
 - Frontend: Next.js (App Router) + TypeScript + Tailwind CSS
 
-Use it to store interview questions, answers, follow-up threads, tags, sources, and spaced-repetition review metadata.
+Use it to store interview questions, answers, follow-up threads, tags, sources, study-history timestamps, and spaced-repetition review metadata.
 
 ## What This Repo Includes
 
 - Create, edit, delete interview questions
 - Nested follow-up question threads (`parent_id`)
+- Drag-and-drop thread organization:
+  - Reorder follow-ups within the same parent thread
+  - Move a follow-up into another follow-up (nest under target)
+  - Drag a follow-up out of a parent to make it top-level
 - Search over question + answer text
 - Filter by source and tags
+- Thread controls on main page:
+  - Collapse/expand threads
+  - Focus mode (show one thread and its descendants)
+  - Export one thread to `.docx`
+- Studied tracking for parent threads:
+  - Set/update studied date-time (IST input)
+  - Studied counter
+  - Optional studied timestamp history panel
 - Dashboard stats (counts, due items, weakest tags)
 - Study mode with review actions (`forgot` / `almost` / `knew`)
+- Export all currently visible questions to `.docx`
 - Source/tag autocomplete suggestions while typing in the Add/Edit modal
 
 ## Project Structure
@@ -140,8 +153,10 @@ Base URL: `http://localhost:8000`
 - `POST /v1/questions`
 - `PATCH /v1/questions/{id}`
 - `DELETE /v1/questions/{id}`
+- `POST /v1/questions/reorder-children`
 - `POST /v1/questions/{id}/review?rating=forgot|almost|knew`
 - `GET /v1/questions/suggestions?field=source|tag&q=<text>&limit=8`
+- `GET /v1/questions/export` (supports full export + thread export via `thread_id`)
 - `GET /v1/dashboard/stats`
 
 Common `GET /v1/questions` query params:
@@ -156,6 +171,8 @@ Common `GET /v1/questions` query params:
 - Questions/dashboard routes currently run in **single-user mode** via `DEFAULT_USER_ID`.
 - Auth route code exists in `backend/app/routes/auth.py`, but auth router is not mounted in `backend/app/main.py` right now.
 - You can still use the app fully for personal/local use.
+- Drag-and-drop ordering is persisted in DB (`questions.child_order`).
+- Study history is persisted in DB (`question_study_events`).
 
 ## Troubleshooting
 
