@@ -118,6 +118,8 @@ def update_question(db: Session, q: models.Question, user_id: uuid.UUID, payload
     if "parent_id" in payload.model_fields_set:
         _validate_parent_id(db, user_id, payload.parent_id, child_id=q.id)
         q.parent_id = payload.parent_id
+    if "studied_at" in payload.model_fields_set:
+        q.studied_at = payload.studied_at
 
     q.updated_at = datetime.utcnow()
     db.commit()

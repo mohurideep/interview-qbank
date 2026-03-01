@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field
 from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class QuestionCreate(BaseModel):
@@ -11,7 +12,7 @@ class QuestionCreate(BaseModel):
     source: str = ""
     tags: List[str] = []
 
-    # ✅ Follow-up support
+    # Follow-up support
     parent_id: Optional[uuid.UUID] = None
 
 
@@ -23,8 +24,9 @@ class QuestionUpdate(BaseModel):
     is_flagged: bool | None = None
     tags: List[str] | None = None
 
-    # ✅ Follow-up support (allow moving a question under a parent, or detaching it)
+    # Follow-up support (allow moving a question under a parent, or detaching it)
     parent_id: uuid.UUID | None = None
+    studied_at: datetime | None = None
 
 
 class QuestionOut(BaseModel):
@@ -40,6 +42,7 @@ class QuestionOut(BaseModel):
     review_count: int
     mastery_score: float
     next_review_at: datetime
+    studied_at: datetime | None = None
 
-    # ✅ Follow-up support
+    # Follow-up support
     parent_id: uuid.UUID | None = None

@@ -53,6 +53,7 @@ class Question(Base):
 
     review_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     mastery_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    studied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # NOTE: you currently default next_review_at to utcnow (so every new question becomes "due")
     # You can keep it, or set nullable=True + default=None if you want "not scheduled" initially.

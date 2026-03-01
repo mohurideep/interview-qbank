@@ -28,6 +28,7 @@ def _to_out(q) -> QuestionOut:
     return QuestionOut(
         id=q.id,
         parent_id=q.parent_id,
+        studied_at=q.studied_at,
         question_text=q.question_text,
         answer_md=q.answer_md,
         difficulty=q.difficulty,
