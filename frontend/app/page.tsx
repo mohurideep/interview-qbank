@@ -567,6 +567,7 @@ export default function Home() {
 
     try {
       await reorderChildren(parentId, orderedChildIds);
+      await refresh({ search, source: sourceFilter, tags: tagsFilter });
     } catch (error: unknown) {
       setQuestions(previous);
       setError(getErrorMessage(error, "Failed to reorder child questions"));

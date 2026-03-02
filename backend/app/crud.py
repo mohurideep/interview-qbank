@@ -315,7 +315,9 @@ def reorder_children(
         raise ValueError("ordered_child_ids must include exactly all child question IDs for this parent")
 
     children_by_id = {child.id: child for child in children}
+    now = datetime.utcnow()
     for idx, child_id in enumerate(ordered_ids):
         children_by_id[child_id].child_order = idx
+        children_by_id[child_id].updated_at = now
 
     db.commit()
