@@ -191,12 +191,24 @@ export default function Home() {
   }, [displayedRoots.length, questions.length, topLevelOnly]);
 
   const studyStats = useMemo(() => {
-    const studied = questions.filter((q) => q.studied_at).length;
+    const studied = questions.filter((q) => {
+      let current: Question | undefined = q;
+      const visited = new Set<string>();
+
+      while (current && !visited.has(current.id)) {
+        if (current.studied_at) return true;
+        visited.add(current.id);
+        current = current.parent_id ? questionById.get(current.parent_id) : undefined;
+      }
+
+      return false;
+    }).length;
+
     return {
       studied,
       pending: Math.max(questions.length - studied, 0),
     };
-  }, [questions]);
+  }, [questions, questionById]);
 
   async function refresh(filters?: { search?: string; source?: string; tags?: string }) {
     setLoading(true);
