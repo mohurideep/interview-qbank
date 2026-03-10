@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import type { Question, QuestionCreate, QuestionUpdate } from "@/lib/api";
 import {
   createQuestion,
@@ -37,6 +37,19 @@ function CheckIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" className={className} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+function DragHandleIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <circle cx="8" cy="6.5" r="1.5" />
+      <circle cx="16" cy="6.5" r="1.5" />
+      <circle cx="8" cy="12" r="1.5" />
+      <circle cx="16" cy="12" r="1.5" />
+      <circle cx="8" cy="17.5" r="1.5" />
+      <circle cx="16" cy="17.5" r="1.5" />
     </svg>
   );
 }
@@ -627,7 +640,15 @@ export default function Home() {
     });
   }
 
-  function renderQuestionCard(q: Question, isFollowup: boolean) {
+  function renderQuestionCard(
+    q: Question,
+    isFollowup: boolean,
+    dragOptions?: {
+      isDragging?: boolean;
+      onDragStart?: (event: DragEvent<HTMLElement>) => void;
+      onDragEnd?: () => void;
+    }
+  ) {
     const expanded = expandedId === q.id;
     const parent = q.parent_id ? questionById.get(q.parent_id) : undefined;
     const roleText = isFollowup ? "Follow-up" : "Parent";
@@ -650,22 +671,41 @@ export default function Home() {
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-2 min-w-0 flex-1">
             <h2 className="font-semibold text-stone-900">{highlightMatches(q.question_text)}</h2>
-            <button
-              onClick={() => void onCopyQuestionAndAnswer(q)}
-              className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                copiedQuestionId === q.id
-                  ? "border-emerald-400 bg-emerald-100 text-emerald-700"
-                  : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
-              }`}
-              title={copiedQuestionId === q.id ? "Copied" : "Copy question + answer"}
-              aria-label={copiedQuestionId === q.id ? "Copied" : "Copy question and answer"}
-            >
-              {copiedQuestionId === q.id ? (
-                <CheckIcon className="w-3.5 h-3.5" />
-              ) : (
-                <CopyIcon className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-2 shrink-0">
+              {isFollowup && dragOptions && (
+                <button
+                  type="button"
+                  draggable
+                  onDragStart={dragOptions.onDragStart}
+                  onDragEnd={dragOptions.onDragEnd}
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-md border cursor-grab active:cursor-grabbing transition-colors ${
+                    dragOptions.isDragging
+                      ? "border-amber-500 bg-amber-200 text-amber-950"
+                      : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                  }`}
+                  title="Drag to reorder or nest this follow-up"
+                  aria-label="Drag to reorder or nest this follow-up"
+                >
+                  <DragHandleIcon className="w-3.5 h-3.5" />
+                </button>
               )}
-            </button>
+              <button
+                onClick={() => void onCopyQuestionAndAnswer(q)}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                  copiedQuestionId === q.id
+                    ? "border-emerald-400 bg-emerald-100 text-emerald-700"
+                    : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                }`}
+                title={copiedQuestionId === q.id ? "Copied" : "Copy question + answer"}
+                aria-label={copiedQuestionId === q.id ? "Copied" : "Copy question and answer"}
+              >
+                {copiedQuestionId === q.id ? (
+                  <CheckIcon className="w-3.5 h-3.5" />
+                ) : (
+                  <CopyIcon className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
           </div>
           <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-900">
             L{q.difficulty}
@@ -882,9 +922,6 @@ export default function Home() {
                   }}
                 />
                 <div
-                  draggable={!isBusy}
-                  onDragStart={() => setDraggedChild({ childId: child.id, parentId })}
-                  onDragEnd={() => clearDragState()}
                   onDragOver={(event) => {
                     if (!draggedChild || isBusy) return;
                     event.preventDefault();
@@ -898,7 +935,16 @@ export default function Home() {
                   }}
                   className={`${isDraggingThis ? "opacity-60" : ""}`}
                 >
-                  {renderQuestionCard(child, true)}
+                  {renderQuestionCard(child, true, {
+                    isDragging: isDraggingThis,
+                    onDragStart: (event) => {
+                      event.stopPropagation();
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", child.id);
+                      setDraggedChild({ childId: child.id, parentId });
+                    },
+                    onDragEnd: () => clearDragState(),
+                  })}
                 </div>
                 <div
                   className={`h-2 rounded transition-colors ${afterActive ? "bg-amber-300/80" : "bg-transparent"}`}
