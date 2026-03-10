@@ -190,6 +190,14 @@ export default function Home() {
     return `${visible} top-level shown (${questions.length} total)`;
   }, [displayedRoots.length, questions.length, topLevelOnly]);
 
+  const studyStats = useMemo(() => {
+    const studied = questions.filter((q) => q.studied_at).length;
+    return {
+      studied,
+      pending: Math.max(questions.length - studied, 0),
+    };
+  }, [questions]);
+
   async function refresh(filters?: { search?: string; source?: string; tags?: string }) {
     setLoading(true);
     setError(null);
@@ -984,6 +992,14 @@ export default function Home() {
             <p className="text-xs uppercase tracking-[0.14em] text-amber-700/80 mb-1">Knowledge Workspace</p>
             <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Interview QBank</h1>
             <p className="text-sm text-stone-600 mt-1">{countText}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                {studyStats.studied} studied
+              </span>
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-medium text-amber-800">
+                {studyStats.pending} pending
+              </span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
